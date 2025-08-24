@@ -1,33 +1,27 @@
 import 'dart:convert';
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/categories/provider/category_provider.dart';
 import 'package:products_catelogs/products/provider/products_management.dart';
 import 'package:provider/provider.dart';
 
-class AddProductScreen extends StatelessWidget {
-  final Product? product; 
+class EditProducts extends StatelessWidget {
+  final Product? product;
 
-  const AddProductScreen({super.key, this.product});
+  const EditProducts({super.key, this.product});
 
   @override
   Widget build(BuildContext context) {
+
     final provider = Provider.of<ProductProvider>(context);
 
-    // // Prefill controllers and image/category once
-    // WidgetsBinding.instance.addPostFrameCallback((_) {
-    //   if (product != null) {
-    //     provider.nameController.text = product!.name;
-    //     provider.priceController.text = product!.price.toString();
-    //     provider.unitController.text = product!.unit;
-    //     provider.stockController.text = product!.stock.toString();
-    //     provider.descController.text = product!.description;
-    //     provider.images = product!.images;
-    //     provider.selectedCategory = product!.categoryId;
-    //   }
-    // });
-
-    Future<void> saveProduct() async {
+  // Prefill form after first frame
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    provider.fillFormOnce(product);
+  });
+    Future<void> updateProduct() async {
       if (provider.nameController.text.isEmpty ||
           provider.priceController.text.isEmpty ||
           provider.unitController.text.isEmpty ||
@@ -46,34 +40,25 @@ class AddProductScreen extends StatelessWidget {
         unit: provider.unitController.text.trim(),
         stock: int.tryParse(provider.stockController.text.trim()) ?? 0,
         description: provider.descController.text.trim(),
-     images: List<String>.from(provider.images),
+       images: List<String>.from(provider.images),
         categoryId: provider.selectedCategory ?? '',
       );
 
-      if (product == null) {
-        await provider.addProduct(newProduct);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Product added successfully")),
-        );
-      } else {
+      
         await provider.editProduct(product!, newProduct);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Product updated successfully")),
         );
-      }
+    
 
-      
-      Navigator.pop(context);
+     log("calling reset form");
       provider.resetForm();
+       log("called  reset form");
+      Navigator.pop(context);
     }
 
     return Scaffold(
-
-      appBar: AppBar(
-        surfaceTintColor: Colors.white,
-        shadowColor: Colors.white,
-        title: Text(product == null ? "Add Product" : "Edit Product"),
-      ),
+      appBar: AppBar(title: Text("Edit Product")),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: SingleChildScrollView(
@@ -81,7 +66,7 @@ class AddProductScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               /// 🔹 Image Picker
-             Center(
+                     Center(
   child: GestureDetector(
     onTap: () => _showImageSourceDialog(context, provider),
     child: SizedBox(
@@ -140,26 +125,45 @@ class AddProductScreen extends StatelessWidget {
     ),
   ),
 ),
- const SizedBox(height: 24),
+
+              const SizedBox(height: 24),
 
               /// 🔹 Product Name
               _buildLabel("Product Name"),
-              _buildTextField(provider.nameController, "Enter product name", prefix: Iconsax.box),
+              _buildTextField(
+                provider.nameController,
+                "Enter product name",
+                prefix: Iconsax.box,
+              ),
               const SizedBox(height: 16),
 
               /// 🔹 Price
               _buildLabel("Price"),
-              _buildTextField(provider.priceController, "Enter price", prefix: Iconsax.money, isNumber: true),
+              _buildTextField(
+                provider.priceController,
+                "Enter price",
+                prefix: Iconsax.money,
+                isNumber: true,
+              ),
               const SizedBox(height: 16),
 
               /// 🔹 Unit
               _buildLabel("Unit"),
-              _buildTextField(provider.unitController, "e.g. kg, litre, piece", prefix: Iconsax.weight),
+              _buildTextField(
+                provider.unitController,
+                "e.g. kg, litre, piece",
+                prefix: Iconsax.weight,
+              ),
               const SizedBox(height: 16),
 
               /// 🔹 Stock Quantity
               _buildLabel("Stock Quantity"),
-              _buildTextField(provider.stockController, "Enter stock quantity", prefix: Iconsax.box, isNumber: true),
+              _buildTextField(
+                provider.stockController,
+                "Enter stock quantity",
+                prefix: Iconsax.box,
+                isNumber: true,
+              ),
               const SizedBox(height: 16),
 
               /// 🔹 Description
@@ -169,7 +173,9 @@ class AddProductScreen extends StatelessWidget {
                 maxLines: 3,
                 decoration: InputDecoration(
                   hintText: "Enter product description",
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -216,13 +222,21 @@ class AddProductScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton.icon(
-                  onPressed: saveProduct,
-                  icon: Icon(product == null ? Iconsax.add : Iconsax.document_upload, color: Colors.black),
-                  label: Text(product == null ? "Add Product" : "Update Product",
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black)),
+                  onPressed: updateProduct,
+                  icon: Icon(Iconsax.document_upload, color: Colors.black),
+                  label: Text(
+                    "Update Product",
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.grey.shade100,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ),
@@ -234,11 +248,19 @@ class AddProductScreen extends StatelessWidget {
   }
 
   Widget _buildLabel(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-      );
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      text,
+      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+    ),
+  );
 
-  Widget _buildTextField(TextEditingController controller, String hint, {IconData? prefix, bool isNumber = false}) {
+  Widget _buildTextField(
+    TextEditingController controller,
+    String hint, {
+    IconData? prefix,
+    bool isNumber = false,
+  }) {
     return TextField(
       controller: controller,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
@@ -254,7 +276,9 @@ class AddProductScreen extends StatelessWidget {
 void _showImageSourceDialog(BuildContext context, ProductProvider provider) {
   showModalBottomSheet(
     context: context,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
     builder: (_) => Padding(
       padding: const EdgeInsets.all(16),
       child: Column(

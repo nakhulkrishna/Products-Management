@@ -23,7 +23,7 @@ class HomeScreen extends StatelessWidget {
         'title': 'Categories',
         'icon': Iconsax.category,
         'color': Colors.green,
-        'screen': const CategoryScreen(categories: [],),
+        'screen': const CategoryListScreen(),
       },
       {
         'title': 'Vendors',
