@@ -1,0 +1,328 @@
+import 'package:flutter/material.dart';
+import 'package:iconsax/iconsax.dart';
+import 'package:intl/intl.dart';
+import 'package:products_catelogs/categories/screen/add_categories.dart';
+import 'package:products_catelogs/categories/screen/categories_managment.dart';
+import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
+import 'package:products_catelogs/orders/screen/orders_screen.dart';
+import 'package:products_catelogs/products/provider/products_management.dart';
+import 'package:products_catelogs/products/screen/products_management.dart';
+import 'package:products_catelogs/settings/screens/settings.dart';
+import 'package:products_catelogs/staff_management/screen/salesman_screen.dart';
+import 'package:products_catelogs/staff_management/screen/staff_management.dart';
+import 'package:products_catelogs/theme/themeprovider.dart';
+import 'package:provider/provider.dart';
+
+class DashboardScreen extends StatelessWidget {
+  const DashboardScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        leading: Consumer<ThemeProvider>(
+          builder: (context, themeProvider, child) {
+            return IconButton(
+              onPressed: () {
+                themeProvider.toggleTheme();
+              },
+              icon: Icon(
+                themeProvider.isDarkMode ? Iconsax.sun_1 : Iconsax.moon,
+              ),
+            );
+          },
+        ),
+
+        surfaceTintColor: Colors.transparent,
+        toolbarHeight: 80,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text("Welcome back!", style: theme.textTheme.bodySmall),
+            const SizedBox(height: 4),
+            Text(
+              "JABIR",
+              style: theme.textTheme.bodyLarge?.copyWith(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+                icon: Icon(Iconsax.setting, color: theme.iconTheme.color),
+                onPressed: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => Settings(),));
+                }
+                ,
+              ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Balance Card
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Iconsax.wallet_3, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        "Total Sale Value",
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                      const Spacer(),
+                      // Text(
+                      //   "See details",
+                      //   style: theme.textTheme.bodyMedium?.copyWith(
+                      //     color: theme.colorScheme.primary,
+                      //     fontWeight: FontWeight.w500,
+                      //   ),
+                      // ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Consumer<ProductProvider>(
+                    builder: (context, value, child) {
+                      return Text(
+                        "\u20B9${value.totalOrderValue.toStringAsFixed(2)}",
+                        style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Stats
+            Consumer2<ProductProvider, StaffProvider>(
+              builder: (context, value, staff, child) {
+                return GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 15,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    // Navigate to ProductsScreen
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ProductsManagement(),
+                          ),
+                        );
+                      },
+                      child: buildStatCard(
+                        context,
+                        Iconsax.box,
+                        "Total Products",
+                        "${value.products.length}",
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const OrdersScreen(),
+                          ),
+                        );
+                      },
+                      child: buildStatCard(
+                        context,
+                        Iconsax.shopping_cart,
+                        "Total Order Products",
+                        "${value.orders.length}",
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => CategoriesManagment(),
+                          ),
+                        );
+                      },
+                      child: buildStatCard(
+                        context,
+                        Iconsax.category,
+                        "Total Categories",
+                        "${value.categories.length}",
+                      ),
+                    ),
+
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SalesmanScreen(),
+                          ),
+                        );
+                      },
+                      child: buildStatCard(
+                        context,
+                        Iconsax.people,
+                        "SalesMan",
+                        "${staff.staffList.length}",
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+
+            const SizedBox(height: 20),
+
+            Text(
+              "Recent Orders",
+              style: theme.textTheme.bodyLarge?.copyWith(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Consumer<ProductProvider>(
+              builder: (context, value, child) {
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  itemCount: (value.orders != null && value.orders.isNotEmpty)
+                      ? (value.orders.length > 8 ? 8 : value.orders.length)
+                      : 0,
+                  itemBuilder: (context, index) {
+                    final orders = value.orders[index];
+                    String formattedDate = orders.timestamp != null
+                        ? DateFormat('d MMM yyyy').format(orders.timestamp!)
+                        : '';
+                    return buildTransaction(
+                      context,
+                      orders.productName,
+                      formattedDate,
+                      orders.total.toString(),
+                    );
+                  },
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildStatCard(
+    BuildContext context,
+    IconData icon,
+    String title,
+    String value,
+  ) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: theme.iconTheme.color, size: 30),
+          const SizedBox(height: 12),
+          // Use FittedBox to shrink text if it's too long
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                fontSize: 50, // max font size
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(title, style: theme.textTheme.bodySmall),
+        ],
+      ),
+    );
+  }
+
+  Widget buildTransaction(
+    BuildContext context,
+    String name,
+    String date,
+    String txnId,
+  ) {
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: theme.primaryColor,
+            child: const Icon(Iconsax.box, color: Colors.white),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+                Text(date, style: theme.textTheme.bodySmall),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                "Ordered",
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(txnId, style: theme.textTheme.bodySmall),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

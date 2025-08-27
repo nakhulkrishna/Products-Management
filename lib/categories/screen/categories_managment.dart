@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:provider/provider.dart';
 import 'package:products_catelogs/categories/provider/category_provider.dart';
 import 'package:products_catelogs/categories/screen/add_categories.dart';
+import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
+import 'package:products_catelogs/products/provider/products_management.dart';
+import 'package:products_catelogs/staff_management/screen/staff_management.dart';
+import 'package:provider/provider.dart';
 
-class CategoryListScreen extends StatelessWidget {
-  const CategoryListScreen({super.key});
+class CategoriesManagment extends StatelessWidget {
+  const CategoriesManagment({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<CategoryProvider>(context);
-    final categories = provider.categories;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text("Categories"),
@@ -20,122 +20,74 @@ class CategoryListScreen extends StatelessWidget {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const AddCategoryScreen()),
+                MaterialPageRoute(builder: (context) => AddCategories()),
               );
             },
-            icon: const Icon(Iconsax.folder_add),
+            icon: Icon(Iconsax.add),
           ),
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            // SINGLE HEADER
-            Container(
-              height: 40,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: Colors.blueGrey.shade400,
-              ),
-              child: Row(
-                children: const [
-                  SizedBox(
-                    width: 40,
-                    child: Center(
-                      child: Text(
-                        "#",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      "Categories",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 80,
-                    child: Text(
-                      "Actions",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(),
-            // LIST
-            Expanded(
-              child: ListView.separated(
-                itemCount: categories.length,
-                separatorBuilder: (_, __) => const Divider(),
-                itemBuilder: (context, index) {
-                  final category = categories[index];
-                  return Row(
-                    children: [
-                      SizedBox(
-                        width: 40,
-                        child: Center(
-                          child: Text(
-                            "${index + 1}", // numbering
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          category.name,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Iconsax.edit, color: Colors.grey),
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => AddCategoryScreen(
-                                    isEdit: true,
-                                    category: category,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Iconsax.trash, color: Colors.red),
-                            onPressed: () {
-                              provider.deleteCategory(category.id);
-                            },
-                          ),
-                        ],
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ],
+        padding: const EdgeInsets.all(8.0),
+        child: Consumer<ProductProvider>(
+          builder: (context, value, child) {
+            final data =
+                value.categories; // Assuming this is a list of salesmen
+            if (data.isEmpty) {
+              return const Center(child: Text("No Categories found"));
+            }
+            return ListView.builder(
+              itemCount: data.length,
+              itemBuilder: (context, index) {
+                final cate = data[index];
+                return buildSalesmanTile(context, cate.name, cate.id);
+              },
+            );
+          },
         ),
+      ),
+    );
+  }
+
+  Widget buildSalesmanTile(BuildContext context, String name, String id) {
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: theme.primaryColor,
+            child: const Icon(Iconsax.user, color: Colors.white),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () {
+              context.read<CategoryProvider>().deleteCategory(id);
+              // provider.deleteStaff(id);
+            },
+            icon: Icon(Iconsax.trash, color: Colors.red),
+          ),
+        ],
       ),
     );
   }

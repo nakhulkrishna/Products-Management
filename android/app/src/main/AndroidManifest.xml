@@ -7,8 +7,8 @@
 
 
     <application
-        android:label="products_catelogs"
-        android:name="${applicationName}"
+        android:label="Red Rose Admin"
+
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

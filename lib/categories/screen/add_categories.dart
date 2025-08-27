@@ -1,73 +1,86 @@
 import 'package:flutter/material.dart';
-import 'package:products_catelogs/categories/provider/category_provider.dart';
+import 'package:iconsax/iconsax.dart';
+
+import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
 import 'package:provider/provider.dart';
 
-
-class AddCategoryScreen extends StatelessWidget {
-  final bool isEdit;
-  final Category? category;
-
-  const AddCategoryScreen({super.key, this.isEdit = false, this.category});
+class AddCategories extends StatelessWidget {
+  const AddCategories({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final nameController = TextEditingController(text: category?.name ?? "");
-    final provider = Provider.of<CategoryProvider>(context, listen: false);
-
+    final provider = Provider.of<StaffProvider>(context);
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEdit ? "Edit Category" : "Add Category"),
+        title: const Text("Add Categories"),
+        
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Category Name",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            const SizedBox(height: 6),
             TextField(
-              controller: nameController,
               decoration: InputDecoration(
-                hintText: "Enter category name",
-                filled: true,
-                fillColor: Colors.grey.shade200,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                labelText: "Categories",
+                prefixIcon: const Icon(Iconsax.category),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide(color: theme.cardColor),
                 ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide(color: theme.cardColor, width: 2),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: const BorderSide(color: Colors.red),
+                ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: const BorderSide(color: Colors.red, width: 2),
+                ),
+                errorText: provider.submitted && provider.username.isEmpty
+                    ? 'Username required'
+                    : null,
               ),
+              onChanged: provider.setUsername,
             ),
-            const SizedBox(height: 20),
+
+     
+            Spacer(),
             SizedBox(
               width: double.infinity,
+              height: 50,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  backgroundColor: Colors.green.shade700,
                 ),
-                onPressed: () {
-                  final name = nameController.text.trim();
-                  if (name.isEmpty) return;
+                onPressed: () async {
+                  provider.markSubmitted(); // set _submitted = true
 
-                  if (isEdit && category != null) {
-                    provider.editCategory(category!.id, name);
-                  } else {
-                    provider.addCategory(name);
+                  if (!provider.validateFields()) return;
+
+                  try {
+                    await provider.submitStaff();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Staff Added Successfully')),
+                    );
+                    Navigator.pop(context);
+                  } catch (e) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(e.toString())));
                   }
-                  Navigator.pop(context);
                 },
-                child: Text(
-                  isEdit ? "Update Category" : "Save Category",
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
+
+                child: const Text(
+                  "Add Categories",
+                  style: TextStyle(fontSize: 18),
                 ),
               ),
             ),
+            SizedBox(height: 40),
           ],
         ),
       ),
