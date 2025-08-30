@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
+import 'package:products_catelogs/staff_management/provider/provider.dart';
 import 'package:products_catelogs/staff_management/screen/staff_management.dart';
 import 'package:provider/provider.dart';
 
@@ -9,6 +10,7 @@ class SalesmanScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text("Salesmen"),
@@ -30,9 +32,31 @@ class SalesmanScreen extends StatelessWidget {
           builder: (context, staffProvider, child) {
             final salesmen =
                 staffProvider.staffList; // Assuming this is a list of salesmen
+                // If there are no salesmen, show a centered image with text
             if (salesmen.isEmpty) {
-              return const Center(child: Text("No salesmen found"));
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      'asstes/Image-2.png', // Replace with your image path
+                      width: 200,
+                      height: 200,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      "No salesmen found",
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              );
             }
+
             return ListView.builder(
               itemCount: salesmen.length,
               itemBuilder: (context, index) {

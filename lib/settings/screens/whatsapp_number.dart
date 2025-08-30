@@ -1,7 +1,8 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:products_catelogs/settings/provider/setting_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:country_code_picker/country_code_picker.dart';
 
 class WhatsAppSettingsScreen extends StatelessWidget {
   const WhatsAppSettingsScreen({super.key});
@@ -12,7 +13,7 @@ class WhatsAppSettingsScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     final TextEditingController controller =
-        TextEditingController(text: provider.number.replaceFirst(provider.countryCode, ''));
+        TextEditingController(text: provider.number);
 
     return Scaffold(
       appBar: AppBar(
@@ -24,40 +25,20 @@ class WhatsAppSettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Row(
-              children: [
-                CountryCodePicker(
-                  backgroundColor: theme.cardColor,
-                  initialSelection: provider.countryCode,
-                  onChanged: (code) {
-                    provider.saveNumber(controller.text.trim(), code: code.dialCode);
-                  },
-                  favorite: const ['+91', '+974', '+1', '+44', '+971'],
-                  textStyle: theme.textTheme.bodyMedium,
-                  dialogTextStyle: theme.textTheme.bodyMedium,
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.phone,
+              style: theme.textTheme.bodyMedium,
+              decoration: InputDecoration(
+                labelText: "WhatsApp Number",
+                labelStyle: theme.textTheme.bodySmall,
+                border: OutlineInputBorder(
+                  borderSide: BorderSide(color: theme.dividerColor),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: controller,
-                    keyboardType: TextInputType.phone,
-                    style: theme.textTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      labelText: "WhatsApp Number",
-                      labelStyle: theme.textTheme.bodySmall,
-                      border: OutlineInputBorder(
-                        borderSide: BorderSide(color: theme.dividerColor),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: theme.colorScheme.primary),
-                      ),
-                    ),
-                    onChanged: (value) {
-                      // optional: live update country code + number in provider
-                    },
-                  ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: theme.colorScheme.primary),
                 ),
-              ],
+              ),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
@@ -67,8 +48,10 @@ class WhatsAppSettingsScreen extends StatelessWidget {
               ),
               onPressed: () {
                 String number = controller.text.trim();
-                if (provider.validateNumber("${provider.countryCode}$number")) {
-                  provider.saveNumber(number); // uses current country code
+                if (provider.validateNumber(number)) {
+
+                  print(number);
+                                    provider.saveNumber(number); // saves only the number
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text("Number saved successfully!")),
                   );

@@ -3,7 +3,7 @@ import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/categories/provider/category_provider.dart';
 import 'package:products_catelogs/categories/screen/add_categories.dart';
 import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
-import 'package:products_catelogs/products/provider/products_management.dart';
+import 'package:products_catelogs/products/provider/products_management_pro.dart';
 import 'package:products_catelogs/staff_management/screen/staff_management.dart';
 import 'package:provider/provider.dart';
 
@@ -12,6 +12,7 @@ class CategoriesManagment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text("Categories"),
@@ -33,9 +34,30 @@ class CategoriesManagment extends StatelessWidget {
           builder: (context, value, child) {
             final data =
                 value.categories; // Assuming this is a list of salesmen
-            if (data.isEmpty) {
-              return const Center(child: Text("No Categories found"));
+                        if (data.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      'asstes/Image.png', // your placeholder image
+                      width: 200,
+                      height: 200,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      "No products found",
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              );
             }
+
             return ListView.builder(
               itemCount: data.length,
               itemBuilder: (context, index) {
@@ -63,7 +85,7 @@ class CategoriesManagment extends StatelessWidget {
           CircleAvatar(
             radius: 24,
             backgroundColor: theme.primaryColor,
-            child: const Icon(Iconsax.user, color: Colors.white),
+            child: const Icon(Iconsax.category, color: Colors.white),
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -443,8 +443,13 @@ class Product {
   String description;
   List<String> images;
   String categoryId;
+  double? hyperMarket;
+  String market;
+  String itemCode;
 
   Product({
+    required this.itemCode,
+    required this.market,
     required this.id,
     required this.name,
     required this.price,
@@ -454,10 +459,14 @@ class Product {
     required this.description,
     required this.images,
     required this.categoryId,
+    this.hyperMarket,
   });
 
   Map<String, dynamic> toMap() {
     return {
+      'itemCode': itemCode,
+      'market': market,
+      "hyperPrice": hyperMarket,
       'id': id,
       'name': name,
       'price': price,
@@ -471,15 +480,31 @@ class Product {
   }
 
   factory Product.fromMap(Map<String, dynamic> map) {
+    double? parseDouble(dynamic value) {
+      if (value == null) return null;
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value);
+      return null;
+    }
+
+    int parseInt(dynamic value) {
+      if (value == null) return 0;
+      if (value is int) return value;
+      if (value is String) return int.tryParse(value) ?? 0;
+      if (value is double) return value.toInt();
+      return 0;
+    }
+
     return Product(
+      itemCode: map['itemCode'] ?? "",
+      market: map['market'] ?? "",
+      hyperMarket: parseDouble(map['hyperPrice']),
       id: map['id'] ?? '',
       name: map['name'] ?? '',
-      price: (map['price'] ?? 0).toDouble(),
-      offerPrice: map['offerPrice'] != null
-          ? (map['offerPrice'] as num).toDouble()
-          : null, // ✅ load offer price if exists
+      price: parseDouble(map['price']) ?? 0.0,
+      offerPrice: parseDouble(map['offerPrice']),
       unit: map['unit'] ?? '',
-      stock: map['stock'] ?? 0,
+      stock: parseInt(map['stock']),
       description: map['description'] ?? '',
       images: List<String>.from(map['images'] ?? []),
       categoryId: map['categoryId'] ?? '',
@@ -515,11 +540,17 @@ class ProductProvider extends ChangeNotifier {
   String? expandedProductId;
 
   final TextEditingController nameController = TextEditingController();
+
+  final TextEditingController itemCodeController = TextEditingController();
   final TextEditingController priceController = TextEditingController();
   final TextEditingController unitController = TextEditingController();
   final TextEditingController descController = TextEditingController();
   final TextEditingController stockController = TextEditingController();
   final TextEditingController offerPriceController = TextEditingController();
+  final TextEditingController hypermarketController = TextEditingController();
+
+  final marketController = TextEditingController();
+  final descriptionController = TextEditingController();
 
   String? selectedMarket; // Add this for the dropdown market selection
 
@@ -533,6 +564,8 @@ class ProductProvider extends ChangeNotifier {
 
   void fillFormOnce(Product? product) {
     if (!_isFormFilled && product != null) {
+      marketController.text = selectedMarket!;
+      hypermarketController.text = product.hyperMarket.toString();
       nameController.text = product.name;
       priceController.text = product.price.toString();
       unitController.text = product.unit;
@@ -547,13 +580,13 @@ class ProductProvider extends ChangeNotifier {
 
   void resetForm() {
     images.clear();
-
+    hypermarketController.clear();
     nameController.clear();
     priceController.clear();
     unitController.clear();
     descController.clear();
     stockController.clear();
-     selectedMarket = null; // reset market
+    selectedMarket = null; // reset market
     _isFormFilled = false;
     notifyListeners();
   }
@@ -594,12 +627,9 @@ class ProductProvider extends ChangeNotifier {
     } else {
       selectedFilterCategories.add(categoryId);
     }
-    // Update the currently selected category filter
-    selectedCategory = selectedFilterCategories.isEmpty ? null : null;
     notifyListeners();
   }
 
-  // Update filteredProducts getter
   List<Product> get filteredProducts {
     return _products.where((p) {
       final matchesSearch =
@@ -642,7 +672,7 @@ class ProductProvider extends ChangeNotifier {
           .collection('products')
           .doc(product.id)
           .set(product.toMap());
-      _products.add(product);
+      // _products.add(product);
       notifyListeners();
     } catch (e, stack) {
       log("Firestore addProduct Error: $e");
@@ -713,6 +743,8 @@ class ProductProvider extends ChangeNotifier {
       final index = _products.indexWhere((p) => p.id == product.id);
       if (index != -1) {
         _products[index] = Product(
+          itemCode: product.itemCode,
+          market: product.market,
           id: product.id,
           name: product.name,
           price: product.price,
@@ -745,9 +777,6 @@ class ProductProvider extends ChangeNotifier {
           final resized = img.copyResize(image, width: 400, height: 400);
           final compressedBytes = img.encodeJpg(resized, quality: 50);
           images.add(base64Encode(compressedBytes));
-          if (Navigator.canPop(context)) {
-            Navigator.pop(context);
-          }
         }
       }
       notifyListeners();
@@ -787,5 +816,27 @@ class ProductProvider extends ChangeNotifier {
     _productSub?.cancel();
     _categorySub?.cancel();
     super.dispose();
+  }
+
+  /// Delete all orders (or you can filter if needed)
+  Future<void> deleteAllOrders() async {
+    final collection = FirebaseFirestore.instance.collection('orders');
+
+    try {
+      // Get all orders
+      final snapshot = await collection.get();
+
+      // Batch delete
+      final batch = FirebaseFirestore.instance.batch();
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      await batch.commit();
+      print("✅ All orders deleted successfully");
+      notifyListeners();
+    } catch (e) {
+      print("❌ Error deleting orders: $e");
+    }
   }
 }

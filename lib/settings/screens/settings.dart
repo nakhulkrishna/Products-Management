@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:products_catelogs/products/provider/products_management_pro.dart';
 import 'package:products_catelogs/settings/provider/setting_provider.dart';
 import 'package:products_catelogs/settings/screens/about_us.dart';
 import 'package:products_catelogs/settings/screens/privacy_policy.dart';
@@ -58,7 +59,13 @@ class Settings extends StatelessWidget {
           );
         },
       },
-
+ {
+        "title": "Clear Orders",
+        "icon": Iconsax.brush_1,
+        "onTap": () {
+        context.read<ProductProvider>().deleteAllOrders();
+        },
+      },
       {
         "title": "More Settings",
         "icon": Iconsax.setting_2,

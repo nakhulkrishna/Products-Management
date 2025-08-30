@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
+import 'package:products_catelogs/staff_management/provider/provider.dart';
 import 'package:provider/provider.dart';
 
 class AddStaffScreen extends StatelessWidget {
@@ -13,12 +14,12 @@ class AddStaffScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Add Staff"),
-        // backgroundColor: ,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            // Username
             TextField(
               decoration: InputDecoration(
                 labelText: "Username",
@@ -47,6 +48,7 @@ class AddStaffScreen extends StatelessWidget {
             ),
 
             const SizedBox(height: 16),
+            // Email
             TextField(
               decoration: InputDecoration(
                 labelText: "Email",
@@ -67,19 +69,27 @@ class AddStaffScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                   borderSide: const BorderSide(color: Colors.red, width: 2),
                 ),
-                errorText: provider.submitted && provider.username.isEmpty
+                errorText: provider.submitted && provider.email.isEmpty
                     ? 'Email required'
                     : null,
               ),
               keyboardType: TextInputType.emailAddress,
               onChanged: provider.setEmail,
             ),
+
             const SizedBox(height: 16),
+            // Password
             TextField(
               obscureText: provider.obscurePassword,
               decoration: InputDecoration(
                 labelText: "Password",
                 prefixIcon: const Icon(Iconsax.check),
+                suffixIcon: IconButton(
+                  icon: Icon(provider.obscurePassword
+                      ? Icons.visibility
+                      : Icons.visibility_off),
+                  onPressed: provider.togglePasswordVisibility,
+                ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(20),
                   borderSide: BorderSide(color: theme.cardColor),
@@ -96,14 +106,15 @@ class AddStaffScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                   borderSide: const BorderSide(color: Colors.red, width: 2),
                 ),
-                errorText: provider.submitted && provider.username.isEmpty
-                    ? 'Password required'
+                errorText: provider.submitted && provider.password.length < 7
+                    ? 'Password must be at least 7 characters'
                     : null,
               ),
               onChanged: provider.setPassword,
             ),
 
-            Spacer(),
+            const Spacer(),
+            // Submit button
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -112,7 +123,7 @@ class AddStaffScreen extends StatelessWidget {
                   backgroundColor: Colors.green.shade700,
                 ),
                 onPressed: () async {
-                  provider.markSubmitted(); // set _submitted = true
+                  provider.markSubmitted(); // show inline errors
 
                   if (!provider.validateFields()) return;
 
@@ -123,19 +134,18 @@ class AddStaffScreen extends StatelessWidget {
                     );
                     Navigator.pop(context);
                   } catch (e) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text(e.toString())));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.toString())),
+                    );
                   }
                 },
-
                 child: const Text(
                   "Add Sales Man",
                   style: TextStyle(fontSize: 18),
                 ),
               ),
             ),
-            SizedBox(height: 40),
+            const SizedBox(height: 40),
           ],
         ),
       ),

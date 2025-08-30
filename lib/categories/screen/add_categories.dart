@@ -1,28 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
-
-import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
+import 'package:products_catelogs/categories/provider/category_provider.dart';
 import 'package:provider/provider.dart';
 
-class AddCategories extends StatelessWidget {
+class AddCategories extends StatefulWidget {
   const AddCategories({super.key});
 
   @override
+  State<AddCategories> createState() => _AddCategoriesState();
+}
+
+class _AddCategoriesState extends State<AddCategories> {
+  final TextEditingController _controller = TextEditingController();
+  bool _submitted = false;
+
+  @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<StaffProvider>(context);
+    final provider = Provider.of<CategoryProvider>(context);
     final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Add Categories"),
-        
+        title: const Text("Add Category"),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             TextField(
+              controller: _controller,
               decoration: InputDecoration(
-                labelText: "Categories",
+                labelText: "Category Name",
                 prefixIcon: const Icon(Iconsax.category),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(20),
@@ -40,15 +48,12 @@ class AddCategories extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                   borderSide: const BorderSide(color: Colors.red, width: 2),
                 ),
-                errorText: provider.submitted && provider.username.isEmpty
-                    ? 'Username required'
+                errorText: _submitted && _controller.text.isEmpty
+                    ? 'Category name required'
                     : null,
               ),
-              onChanged: provider.setUsername,
             ),
-
-     
-            Spacer(),
+            const Spacer(),
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -57,33 +62,38 @@ class AddCategories extends StatelessWidget {
                   backgroundColor: Colors.green.shade700,
                 ),
                 onPressed: () async {
-                  provider.markSubmitted(); // set _submitted = true
+                  setState(() => _submitted = true);
 
-                  if (!provider.validateFields()) return;
+                  if (_controller.text.isEmpty) return;
 
                   try {
-                    await provider.submitStaff();
+                    await provider.addCategory(_controller.text.trim());
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Staff Added Successfully')),
+                      const SnackBar(content: Text('Category Added Successfully')),
                     );
                     Navigator.pop(context);
                   } catch (e) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text(e.toString())));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: ${e.toString()}')),
+                    );
                   }
                 },
-
                 child: const Text(
-                  "Add Categories",
+                  "Add Category",
                   style: TextStyle(fontSize: 18),
                 ),
               ),
             ),
-            SizedBox(height: 40),
+            const SizedBox(height: 40),
           ],
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 }

@@ -105,7 +105,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
               section(
                 "Contact Us",
                 Iconsax.message,
-                "📩 Email: support@redrose.com\n📱 WhatsApp: +974-12345678",
+                "Email: jabirkarulai@gmail.com\nWhatsApp: ++974 7727 0580 \nIndian: 9946270580",
               ),
 
               const SizedBox(height: 30),

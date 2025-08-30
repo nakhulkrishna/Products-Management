@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/categories/provider/category_provider.dart';
 import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
-import 'package:products_catelogs/products/provider/products_management.dart';
+import 'package:products_catelogs/products/provider/products_management_pro.dart';
+import 'package:products_catelogs/staff_management/provider/provider.dart';
 import 'package:provider/provider.dart';
 
 class AddProducts extends StatelessWidget {
@@ -12,12 +14,7 @@ class AddProducts extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final nameController = TextEditingController();
-    final priceController = TextEditingController();
-    final stockController = TextEditingController();
-    final unitController = TextEditingController();
-    final marketController = TextEditingController();
-    final descriptionController = TextEditingController();
+
 
     final provider = Provider.of<StaffProvider>(context);
     final productProvider = Provider.of<ProductProvider>(context);
@@ -65,9 +62,39 @@ class AddProducts extends StatelessWidget {
 
               SizedBox(height: 16),
               TextField(
-                controller: nameController,
+                keyboardType: TextInputType.name,
+                controller: productProvider.nameController,
                 decoration: InputDecoration(
                   labelText: "Products Name",
+                  prefixIcon: const Icon(Iconsax.box),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red, width: 2),
+                  ),
+                  errorText: provider.submitted && provider.username.isEmpty
+                      ? 'Products Name required'
+                      : null,
+                ),
+              ),
+         
+              SizedBox(height: 16),
+              TextField(
+                keyboardType: TextInputType.text,
+                controller: productProvider.itemCodeController,
+                decoration: InputDecoration(
+                  labelText: "Item Code",
                   prefixIcon: const Icon(Iconsax.box),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(20),
@@ -147,7 +174,8 @@ class AddProducts extends StatelessWidget {
 
               const SizedBox(height: 16),
               TextField(
-                controller: stockController,
+                 keyboardType: TextInputType.number,
+                controller: productProvider.stockController,
                 decoration: InputDecoration(
                   labelText: "Stcok",
                   prefixIcon: const Icon(Iconsax.code_1),
@@ -177,7 +205,8 @@ class AddProducts extends StatelessWidget {
                 children: [
                   Expanded(
                     child: TextField(
-                      controller: priceController,
+                        keyboardType: TextInputType.number,
+                      controller: productProvider.priceController,
                       decoration: InputDecoration(
                         labelText: "price",
                         prefixIcon: const Icon(Iconsax.dollar_circle4),
@@ -213,9 +242,11 @@ class AddProducts extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
-                      controller: unitController,
+                        keyboardType: TextInputType.text,
+                      controller: productProvider.unitController,
                       // obscureText: provider.obscurePassword,
                       decoration: InputDecoration(
+                        hint: Text("KG / CRT"),
                         labelText: "Unit",
                         prefixIcon: const Icon(Iconsax.level),
                         enabledBorder: OutlineInputBorder(
@@ -250,46 +281,84 @@ class AddProducts extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-           Consumer<ProductProvider>(
-  builder: (context, productProvider, child) {
-    final theme = Theme.of(context);
-    return DropdownButtonFormField<String>(
-      value: productProvider.selectedMarket ?? null,
-      decoration: InputDecoration(
-        labelText: "Market",
-        prefixIcon: const Icon(Iconsax.safe_home),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide(color: theme.cardColor),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide(color: theme.cardColor, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: const BorderSide(color: Colors.red),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: const BorderSide(color: Colors.red, width: 2),
-        ),
-        errorText: provider.submitted && productProvider.selectedMarket == null
-            ? 'Market required'
-            : null,
-      ),
-      items: markets.map((market) {
-        return DropdownMenuItem(
-          value: market,
-          child: Text(market),
-        );
-      }).toList(),
-      onChanged: (value) {
-        productProvider.setMarket(value ?? "");
-      },
-    );
-  },
-),
+              Consumer<ProductProvider>(
+                builder: (context, productProvider, child) {
+                  final theme = Theme.of(context);
+                  return DropdownButtonFormField<String>(
+                    value: productProvider.selectedMarket ?? null,
+                    decoration: InputDecoration(
+                      labelText: "Market",
+                      prefixIcon: const Icon(Iconsax.safe_home),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide(color: theme.cardColor),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide(
+                          color: theme.cardColor,
+                          width: 2,
+                        ),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: const BorderSide(color: Colors.red),
+                      ),
+                      focusedErrorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: const BorderSide(
+                          color: Colors.red,
+                          width: 2,
+                        ),
+                      ),
+                      errorText:
+                          provider.submitted &&
+                              productProvider.selectedMarket == null
+                          ? 'Market required'
+                          : null,
+                    ),
+                    items: markets.map((market) {
+                      return DropdownMenuItem(
+                        value: market,
+                        child: Text(market),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      productProvider.setMarket(value ?? "");
+                      log(value!);
+                    },
+                  );
+                },
+              ),
+              SizedBox(height: 16),
+              TextField(
+                  keyboardType: TextInputType.number,
+                controller: productProvider.hypermarketController,
+                decoration: InputDecoration(
+                  labelText: "Hyper Market Price",
+                  prefixIcon: const Icon(Iconsax.box),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red, width: 2),
+                  ),
+                  errorText: provider.submitted && provider.username.isEmpty
+                      ? 'Hyper Market Price required'
+                      : null,
+                ),
+              ),
+         
               SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
@@ -299,14 +368,16 @@ class AddProducts extends StatelessWidget {
                     backgroundColor: Colors.green.shade700,
                   ),
                   onPressed: () async {
-                    final name = nameController.text.trim();
+                    final hyperPrice=double.tryParse(productProvider.hypermarketController.text.trim()) ?? 0;
+                    final name = productProvider.nameController.text.trim();
+                    final itemcode = productProvider.itemCodeController.text.trim();
                     final price =
-                        double.tryParse(priceController.text.trim()) ?? 0;
+                        double.tryParse(productProvider.priceController.text.trim()) ?? 0;
                     final stock =
-                        int.tryParse(stockController.text.trim()) ?? 0;
-                    final unit = unitController.text.trim();
-                    final market = marketController.text.trim();
-                    final description = descriptionController.text.trim();
+                        int.tryParse(productProvider.stockController.text.trim()) ?? 0;
+                    final unit = productProvider.unitController.text.trim();
+                    final market = productProvider.selectedMarket ?? "";
+                    final description = productProvider.descriptionController.text.trim();
                     final categoryId = productProvider.selectedCategory ?? '';
                     final images = productProvider.images; // base64 list
 
@@ -319,7 +390,11 @@ class AddProducts extends StatelessWidget {
                       return;
                     }
 
+
+
                     final product = Product(
+                      itemCode:itemcode,
+                      market: market,
                       id: DateTime.now().microsecondsSinceEpoch.toString(),
                       name: name,
                       price: price,
@@ -328,6 +403,7 @@ class AddProducts extends StatelessWidget {
                       description: description,
                       images: images,
                       categoryId: categoryId,
+                      hyperMarket: hyperPrice
                     );
 
                     productProvider.addProduct(product);
@@ -338,7 +414,7 @@ class AddProducts extends StatelessWidget {
                       ),
                     );
 
-productProvider.resetForm();
+                    productProvider.resetForm();
                     Navigator.pop(context);
                   },
 
