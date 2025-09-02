@@ -6,6 +6,7 @@ import 'package:products_catelogs/categories/provider/category_provider.dart';
 import 'package:products_catelogs/products/provider/p.dart';
 import 'package:products_catelogs/products/provider/products_management_pro.dart';
 import 'package:products_catelogs/products/screen/add_products.dart';
+import 'package:products_catelogs/products/screen/edit_products.dart';
 import 'package:provider/provider.dart';
 
 class ProductsManagement extends StatelessWidget {
@@ -14,7 +15,7 @@ class ProductsManagement extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
- final productProvider = context.read<ProductProvider>();
+    final productProvider = context.read<ProductProvider>();
 
     return Scaffold(
       appBar: AppBar(
@@ -44,7 +45,7 @@ class ProductsManagement extends StatelessWidget {
                     flex: 5,
                     child: Container(
                       height: 50,
-          
+
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(40),
                         color: theme.cardColor,
@@ -64,9 +65,9 @@ class ProductsManagement extends StatelessWidget {
                                     .none, // removes the default underline
                               ),
                               onChanged: (value) {
-                                context.read<ProductProvider>().updateSearchQuery(
-                                  value,
-                                );
+                                context
+                                    .read<ProductProvider>()
+                                    .updateSearchQuery(value);
                               },
                             ),
                           ),
@@ -79,13 +80,13 @@ class ProductsManagement extends StatelessWidget {
                     flex: 1,
                     child: Container(
                       height: 50,
-          
+
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(40),
                         color: theme.cardColor,
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-          
+
                       child: IconButton(
                         onPressed: () {
                           showModalBottomSheet(
@@ -114,26 +115,28 @@ class ProductsManagement extends StatelessWidget {
                                         SizedBox(height: 20),
                                         Expanded(
                                           child: ListView.builder(
-                                            itemCount: provider.categories.length,
+                                            itemCount:
+                                                provider.categories.length,
                                             itemBuilder: (context, index) {
                                               final category =
                                                   provider.categories[index];
                                               final isSelected = provider
                                                   .selectedFilterCategories
                                                   .contains(category.name);
-          
+
                                               return ListTile(
                                                 title: Text(category.name),
                                                 trailing: Checkbox(
                                                   value: isSelected,
                                                   onChanged: (val) {
-                                                    provider.toggleFilterCategory(
-                                                      category.name,
-                                                    );
+                                                    provider
+                                                        .toggleFilterCategory(
+                                                          category.name,
+                                                        );
                                                   },
                                                 ),
-                                                onTap: () =>
-                                                    provider.toggleFilterCategory(
+                                                onTap: () => provider
+                                                    .toggleFilterCategory(
                                                       category.name,
                                                     ),
                                               );
@@ -165,34 +168,36 @@ class ProductsManagement extends StatelessWidget {
               SizedBox(height: 10),
               Consumer<ProductProvider>(
                 builder: (context, value, child) {
-                final products = value.filteredProducts;
-          if (products.isEmpty) {
-            return SizedBox(
-              height: MediaQuery.of(context).size.height - kToolbarHeight, // screen height minus AppBar
-              child: Center(
-                child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Image.asset(
-              'asstes/Image-3.png',
-              width: 200,
-              height: 200,
-              fit: BoxFit.contain,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              "No products found",
-              style: theme.textTheme.bodyLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-          ],
-                ),
-              ),
-            );
-          }
-          
+                  final products = value.filteredProducts;
+                  if (products.isEmpty) {
+                    return SizedBox(
+                      height:
+                          MediaQuery.of(context).size.height -
+                          kToolbarHeight, // screen height minus AppBar
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Image.asset(
+                              'asstes/Image-3.png',
+                              width: 200,
+                              height: 200,
+                              fit: BoxFit.contain,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              "No products found",
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
                   return ListView.builder(
                     shrinkWrap: true,
                     physics: NeverScrollableScrollPhysics(),
@@ -201,212 +206,226 @@ class ProductsManagement extends StatelessWidget {
                       final products = value.products[index];
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Column(
-                          children: [
-                            Container(
-                              height: 120,
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                color: theme.cardColor,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      height: 100,
-                                      width: 100,
-                                      decoration: BoxDecoration(
-                                        color: theme.scaffoldBackgroundColor,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child:
-                                          (products.images == null ||
-                                              products.images.isEmpty ||
-                                              products.images.first.isEmpty)
-                                          ? Icon(Iconsax.image)
-                                          : ClipRRect(
-                                              borderRadius: BorderRadius.circular(
-                                                12,
-                                              ),
-                                              child: Image.memory(
-                                                base64Decode(
-                                                  products.images.first,
+                        child: GestureDetector(
+                          onLongPress: () =>
+                              _showProductOptions(context, products),
+                          child: Column(
+                            children: [
+                              Container(
+                                height: 120,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: theme.cardColor,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        height: 100,
+                                        width: 100,
+                                        decoration: BoxDecoration(
+                                          color: theme.scaffoldBackgroundColor,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        child:
+                                            (products.images == null ||
+                                                products.images.isEmpty ||
+                                                products.images.first.isEmpty)
+                                            ? Icon(Iconsax.image)
+                                            : ClipRRect(
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                                child: Image.memory(
+                                                  base64Decode(
+                                                    products.images.first,
+                                                  ),
                                                 ),
                                               ),
+                                      ),
+                                      SizedBox(width: 10),
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              maxLines: 2,
+                                              products.name,
+                                              style: theme.textTheme.bodyLarge,
                                             ),
-                                    ),
-                                    SizedBox(width: 10),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          products.name,
-                                          style: theme.textTheme.bodyLarge,
-                                        ),
-          
-                                        Text(
-                                          products.categoryId,
-                                          style: theme.textTheme.bodyMedium,
-                                        ),
-                                        Text(
-                                          products.market,
-                                          style: theme.textTheme.bodyMedium,
-                                        ),
-                                        SizedBox(height: 10),
-                                        Row(
-                                          children: [
-                                            InkWell(
-                                              onTap: () {
-                                                showModalBottomSheet(
-                                                  context: context,
-                                                  isScrollControlled:
-                                                      true, // so it adjusts with keyboard
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.vertical(
-                                                          top: Radius.circular(
-                                                            20,
+                                          ),
+
+                                          Text(
+                                            products.categoryId,
+                                            style: theme.textTheme.bodyMedium,
+                                          ),
+                                          Text(
+                                            products.market,
+                                            style: theme.textTheme.bodyMedium,
+                                          ),
+                                          SizedBox(height: 10),
+                                          Row(
+                                            children: [
+                                              InkWell(
+                                                onTap: () {
+                                                  showModalBottomSheet(
+                                                    context: context,
+                                                    isScrollControlled:
+                                                        true, // so it adjusts with keyboard
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.vertical(
+                                                            top:
+                                                                Radius.circular(
+                                                                  20,
+                                                                ),
                                                           ),
+                                                    ),
+                                                    builder: (context) {
+                                                      final TextEditingController
+                                                      offerPriceController =
+                                                          TextEditingController(
+                                                            text:
+                                                                products.offerPrice ==
+                                                                    null
+                                                                ? ""
+                                                                : products
+                                                                      .offerPrice
+                                                                      .toString(),
+                                                          );
+
+                                                      return Padding(
+                                                        padding: EdgeInsets.only(
+                                                          left: 16,
+                                                          right: 16,
+                                                          top: 20,
+                                                          bottom:
+                                                              MediaQuery.of(
+                                                                    context,
+                                                                  )
+                                                                  .viewInsets
+                                                                  .bottom +
+                                                              20,
                                                         ),
-                                                  ),
-                                                  builder: (context) {
-                                                    final TextEditingController
-                                                    offerPriceController =
-                                                        TextEditingController(
-                                                          text:
-                                                              products.offerPrice ==
-                                                                  null
-                                                              ? ""
-                                                              : products
-                                                                    .offerPrice
-                                                                    .toString(),
-                                                        );
-          
-                                                    return Padding(
-                                                      padding: EdgeInsets.only(
-                                                        left: 16,
-                                                        right: 16,
-                                                        top: 20,
-                                                        bottom:
-                                                            MediaQuery.of(
-                                                              context,
-                                                            ).viewInsets.bottom +
-                                                            20,
-                                                      ),
-                                                      child: Column(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        children: [
-                                                          Text(
-                                                            "Set Offer Price",
-                                                            style:
-                                                                Theme.of(context)
-                                                                    .textTheme
-                                                                    .headlineSmall,
-                                                          ),
-                                                          SizedBox(height: 15),
-                                                          TextField(
-                                                            controller:
-                                                                offerPriceController,
-                                                            keyboardType:
-                                                                TextInputType
-                                                                    .number,
-                                                            decoration: InputDecoration(
-                                                              labelText:
-                                                                  "Offer Price",
-                                                              border: OutlineInputBorder(
-                                                                borderRadius:
-                                                                    BorderRadius.circular(
-                                                                      12,
-                                                                    ),
+                                                        child: Column(
+                                                          mainAxisSize:
+                                                              MainAxisSize.min,
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment
+                                                                  .start,
+                                                          children: [
+                                                            Text(
+                                                              "Set Offer Price",
+                                                              style:
+                                                                  Theme.of(
+                                                                        context,
+                                                                      )
+                                                                      .textTheme
+                                                                      .headlineSmall,
+                                                            ),
+                                                            SizedBox(
+                                                              height: 15,
+                                                            ),
+                                                            TextField(
+                                                              controller:
+                                                                  offerPriceController,
+                                                              keyboardType:
+                                                                  TextInputType
+                                                                      .number,
+                                                              decoration: InputDecoration(
+                                                                labelText:
+                                                                    "Offer Price",
+                                                                border: OutlineInputBorder(
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        12,
+                                                                      ),
+                                                                ),
                                                               ),
                                                             ),
-                                                          ),
-                                                          SizedBox(height: 20),
-                                                          SizedBox(
-                                                            width:
-                                                                double.infinity,
-                                                            child: ElevatedButton(
-                                                              onPressed: () {
-                                                                final offerPrice =
-                                                                    double.tryParse(
-                                                                      offerPriceController
-                                                                          .text,
-                                                                    );
-                                                                if (offerPrice !=
-                                                                    null) {
-                                                                  // Call provider to update product offer price
-                                                                  context
-                                                                      .read<
-                                                                        ProductProvider
-                                                                      >()
-                                                                      .setOfferPrice(
-                                                                        products,
-                                                                        offerPrice,
-                                                                      );
-          
-                                                                  Navigator.pop(
-                                                                    context,
-                                                                  ); // close bottom sheet
-                                                                }
-                                                              },
-                                                              child: Text("Save"),
+                                                            SizedBox(
+                                                              height: 20,
                                                             ),
-                                                          ),
-                                                        ],
+                                                            SizedBox(
+                                                              width: double
+                                                                  .infinity,
+                                                              child: ElevatedButton(
+                                                                onPressed: () {
+                                                                  final offerPrice =
+                                                                      double.tryParse(
+                                                                        offerPriceController
+                                                                            .text,
+                                                                      );
+                                                                  if (offerPrice !=
+                                                                      null) {
+                                                                    // Call provider to update product offer price
+                                                                    context
+                                                                        .read<
+                                                                          ProductProvider
+                                                                        >()
+                                                                        .setOfferPrice(
+                                                                          products,
+                                                                          offerPrice,
+                                                                        );
+
+                                                                    Navigator.pop(
+                                                                      context,
+                                                                    ); // close bottom sheet
+                                                                  }
+                                                                },
+                                                                child: Text(
+                                                                  "Save",
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      );
+                                                    },
+                                                  );
+                                                },
+                                                child: Text(
+                                                  "₹${products.price.toString()}",
+                                                  style: theme
+                                                      .textTheme
+                                                      .bodySmall
+                                                      ?.copyWith(
+                                                        decoration:
+                                                            products.offerPrice ==
+                                                                null
+                                                            ? null
+                                                            : TextDecoration
+                                                                  .lineThrough,
+                                                        color: Colors.green,
                                                       ),
-                                                    );
-                                                  },
-                                                );
-                                              },
-                                              child: Text(
-                                                "₹${products.price.toString()}",
+                                                ),
+                                              ),
+
+                                              SizedBox(width: 10),
+                                              Text(
+                                                products.offerPrice == null
+                                                    ? ""
+                                                    : "₹${products.offerPrice.toString()}",
                                                 style: theme.textTheme.bodySmall
                                                     ?.copyWith(
-                                                      decoration:
-                                                          products.offerPrice ==
-                                                              null
-                                                          ? null
-                                                          : TextDecoration
-                                                                .lineThrough,
-                                                      color: Colors.green,
+                                                      color: Colors
+                                                          .red, // override color
                                                     ),
                                               ),
-                                            ),
-          
-                                            SizedBox(width: 10),
-                                            Text(
-                                              products.offerPrice == null
-                                                  ? ""
-                                                  : "₹${products.offerPrice.toString()}",
-                                              style: theme.textTheme.bodySmall
-                                                  ?.copyWith(
-                                                    color: Colors
-                                                        .red, // override color
-                                                  ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                    Spacer(),
-                                    IconButton(
-                                      onPressed: () {
-                                        value.deleteProduct(products.id);
-                                      },
-                                      icon: Icon(Iconsax.trash),
-                                    ),
-                                  ],
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       );
                     },
@@ -417,6 +436,48 @@ class ProductsManagement extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  void _showProductOptions(BuildContext context, Product product) {
+    showModalBottomSheet(
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.edit, color: Colors.blue),
+                title: Text("Edit"),
+                onTap: () {
+                  Navigator.pop(context); // close bottom sheet
+                  // Reset form and open AddProducts screen in edit mode
+                  final productProvider = context.read<ProductProvider>();
+                  // productProvider.setProductForEdit(product);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => EditProducts(product: product,)),
+                  );
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.delete, color: Colors.red),
+                title: Text("Delete"),
+                onTap: () {
+                  Navigator.pop(context); // close bottom sheet
+                  // Delete product
+                  context.read<ProductProvider>().deleteProduct(product.id);
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

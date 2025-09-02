@@ -1,5 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:products_catelogs/authentication/provider/authentication_provider.dart';
+import 'package:products_catelogs/authentication/screens/splash_screen.dart';
 // import 'package:products_catelogs/Home/screens/home_screen.dart';
 import 'package:products_catelogs/categories/provider/category_provider.dart';
 import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
@@ -25,6 +27,7 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (context) => UserProvider(),),
         ChangeNotifierProvider(create: (_) => CategoryProvider()),
         ChangeNotifierProvider(create: (_) => ProductProvider()),
         ChangeNotifierProvider(create: (_) => StaffProvider()),
@@ -50,7 +53,7 @@ class MyApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeProvider.themeMode, // Dynamic theme
-      home: const DashboardScreen(),
+      home: const SplashScreen(),
     );
         },
       );

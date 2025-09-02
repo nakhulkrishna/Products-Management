@@ -562,21 +562,7 @@ class ProductProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void fillFormOnce(Product? product) {
-    if (!_isFormFilled && product != null) {
-      marketController.text = selectedMarket!;
-      hypermarketController.text = product.hyperMarket.toString();
-      nameController.text = product.name;
-      priceController.text = product.price.toString();
-      unitController.text = product.unit;
-      stockController.text = product.stock.toString();
-      // descController.text = product.description;
-      images = List<String>.from(product.images);
-      selectedCategory = product.categoryId;
-      _isFormFilled = true;
-      notifyListeners();
-    }
-  }
+
 
   void resetForm() {
     images.clear();
@@ -839,4 +825,28 @@ class ProductProvider extends ChangeNotifier {
       print("❌ Error deleting orders: $e");
     }
   }
+  Future<void> editProduct(Product oldProduct, Product newProduct) async {
+  try {
+    // Update Firestore
+    await FirebaseFirestore.instance
+        .collection('products')
+        .doc(oldProduct.id)
+        .update(newProduct.toMap());
+
+    // Update local list
+    final index = _products.indexWhere((p) => p.id == oldProduct.id);
+    if (index != -1) {
+      _products[index] = newProduct;
+    }
+
+    notifyListeners();
+    log("✅ Product updated successfully");
+  } catch (e, stack) {
+    log("❌ Firestore editProduct Error: $e");
+    log(stack.toString());
+    throw Exception("Failed to edit product");
+  }
+}
+
+
 }

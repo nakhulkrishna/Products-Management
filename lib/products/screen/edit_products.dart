@@ -1,315 +1,476 @@
-// import 'dart:convert';
-// import 'dart:developer';
+import 'dart:convert';
+import 'dart:developer';
 
-// import 'package:flutter/material.dart';
-// import 'package:iconsax/iconsax.dart';
-// import 'package:products_catelogs/categories/provider/category_provider.dart';
-// import 'package:products_catelogs/products/provider/products_management.dart';
-// import 'package:provider/provider.dart';
+import 'package:flutter/material.dart';
+import 'package:iconsax/iconsax.dart';
+import 'package:products_catelogs/categories/provider/category_provider.dart';
+import 'package:products_catelogs/products/provider/products_management_pro.dart';
+import 'package:provider/provider.dart';
 
-// class EditProducts extends StatelessWidget {
-//   final Product? product;
+class EditProducts extends StatelessWidget {
+  final Product product;
+  const EditProducts({super.key, required this.product});
 
-//   const EditProducts({super.key, this.product});
+  @override
+  Widget build(BuildContext context) {
+    final productProvider = Provider.of<ProductProvider>(context);
+    final theme = Theme.of(context);
+    const List<String> markets = ["Hyper Market", "Local Market"];
 
-//   @override
-//   Widget build(BuildContext context) {
-//     final provider = Provider.of<ProductProvider>(context);
+    productProvider.nameController.text = product.name;
+    productProvider.itemCodeController.text = product.itemCode;
+    productProvider.priceController.text = product.price.toString();
+    productProvider.stockController.text = product.stock.toString();
+    productProvider.unitController.text = product.unit;
+    productProvider.hypermarketController.text = product.hyperMarket.toString();
+    productProvider.selectedMarket = product.market;
+    productProvider.selectedCategory = product.categoryId;
+    productProvider.images = List<String>.from(product.images);
+    productProvider.descriptionController.text = product.description;
 
-//     // Prefill form after first frame
-//     WidgetsBinding.instance.addPostFrameCallback((_) {
-//       provider.fillFormOnce(product);
-//     });
-//     Future<void> updateProduct() async {
-//       if (provider.nameController.text.isEmpty ||
-//           provider.priceController.text.isEmpty ||
-//           provider.unitController.text.isEmpty ||
-//           provider.selectedCategory == null ||
-//           provider.images.isEmpty) {
-//         ScaffoldMessenger.of(context).showSnackBar(
-//           const SnackBar(content: Text("Please fill all required fields")),
-//         );
-//         return;
-//       }
+    return Scaffold(
+      appBar: AppBar(title: const Text("Edit Product")),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Consumer<ProductProvider>(
+                builder: (context, value, child) {
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: value.images.isEmpty ? 1 : value.images.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: 1.2,
+                        ),
+                    itemBuilder: (context, index) {
+                      if (value.images.isEmpty) {
+                        return buildStatCard(context, productProvider, "");
+                      } else {
+                        return buildStatCard(
+                          context,
+                          productProvider,
+                          value.images[index],
+                        );
+                      }
+                    },
+                  );
+                },
+              ),
 
-//       final newProduct = Product(
-//         id: product?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-//         name: provider.nameController.text.trim(),
-//         price: double.tryParse(provider.priceController.text.trim()) ?? 0,
-//         unit: provider.unitController.text.trim(),
-//         stock: int.tryParse(provider.stockController.text.trim()) ?? 0,
-//         description: provider.descController.text.trim(),
-//         images: List<String>.from(provider.images),
-//         categoryId: provider.selectedCategory ?? '',
-//       );
+              const SizedBox(height: 16),
+              TextField(
+                controller: productProvider.nameController,
+                decoration: InputDecoration(
+                  labelText: "Product Name",
+                  prefixIcon: const Icon(Iconsax.box),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red, width: 2),
+                  ),
+                ),
+              ),
 
-//       await provider.editProduct(product!, newProduct);
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         const SnackBar(content: Text("Product updated successfully")),
-//       );
+              const SizedBox(height: 16),
+              TextField(
+                controller: productProvider.itemCodeController,
+                decoration: InputDecoration(
+                  labelText: "Item Code",
+                  prefixIcon: const Icon(Iconsax.box),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red, width: 2),
+                  ),
+                ),
+              ),
 
-//       log("calling reset form");
-//       provider.resetForm();
-//       log("called  reset form");
-//       Navigator.pop(context);
-//     }
+              const SizedBox(height: 16),
+              Consumer<CategoryProvider>(
+                builder: (context, categoryProvider, child) {
+                  final categories = categoryProvider.categories;
+                  final selected =
+                      categories.any(
+                        (c) =>
+                            c.id.toString() == productProvider.selectedCategory,
+                      )
+                      ? productProvider.selectedCategory
+                      : null;
 
-//     return Scaffold(
-//       appBar: AppBar(title: Text("Edit Product")),
-//       body: Padding(
-//         padding: const EdgeInsets.all(16.0),
-//         child: SingleChildScrollView(
-//           child: Column(
-//             crossAxisAlignment: CrossAxisAlignment.start,
-//             children: [
-//               /// 🔹 Image Picker
-//               Center(
-//                 child: GestureDetector(
-//                   onTap: () => _showImageSourceDialog(context, provider),
-//                   child: SizedBox(
-//                     height: 120,
-//                     child: ListView.builder(
-//                       scrollDirection: Axis.horizontal,
-//                       itemCount:
-//                           provider.images.length + 1, // +1 for add button
-//                       itemBuilder: (context, index) {
-//                         if (index == provider.images.length) {
-//                           // Add image button
-//                           return Container(
-//                             width: 120,
-//                             margin: const EdgeInsets.only(right: 8),
-//                             decoration: BoxDecoration(
-//                               color: Colors.grey.shade200,
-//                               borderRadius: BorderRadius.circular(12),
-//                               border: Border.all(color: Colors.grey.shade400),
-//                             ),
-//                             child: Icon(
-//                               Iconsax.add,
-//                               size: 40,
-//                               color: Colors.grey,
-//                             ),
-//                           );
-//                         } else {
-//                           // Show existing images
-//                           return Stack(
-//                             children: [
-//                               Container(
-//                                 width: 120,
-//                                 margin: const EdgeInsets.only(right: 8),
-//                                 decoration: BoxDecoration(
-//                                   borderRadius: BorderRadius.circular(12),
-//                                   border: Border.all(
-//                                     color: Colors.grey.shade400,
-//                                   ),
-//                                 ),
-//                                 child: Image.memory(
-//                                   base64Decode(provider.images[index]),
-//                                   fit: BoxFit.cover,
-//                                 ),
-//                               ),
-//                               Positioned(
-//                                 top: 4,
-//                                 right: 4,
-//                                 child: GestureDetector(
-//                                   onTap: () => provider.removeImageAt(index),
-//                                   child: Container(
-//                                     decoration: BoxDecoration(
-//                                       shape: BoxShape.circle,
-//                                       color: Colors.black54,
-//                                     ),
-//                                     child: const Icon(
-//                                       Icons.close,
-//                                       size: 20,
-//                                       color: Colors.white,
-//                                     ),
-//                                   ),
-//                                 ),
-//                               ),
-//                             ],
-//                           );
-//                         }
-//                       },
-//                     ),
-//                   ),
-//                 ),
-//               ),
+                  return DropdownButtonFormField<String>(
+                    value: selected,
+                    hint: const Text('Select Category'),
+                    decoration: InputDecoration(
+                      labelText: "Category",
+                      prefixIcon: const Icon(Iconsax.category_2),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide(color: theme.cardColor),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: BorderSide(
+                          color: theme.cardColor,
+                          width: 2,
+                        ),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: const BorderSide(color: Colors.red),
+                      ),
+                      focusedErrorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        borderSide: const BorderSide(
+                          color: Colors.red,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    items: categories.map((cat) {
+                      return DropdownMenuItem(
+                        value: cat.id.toString(),
+                        child: Text(cat.name),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value != null) productProvider.setCategory(value);
+                    },
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                keyboardType: TextInputType.number,
+                controller: productProvider.stockController,
+                decoration: InputDecoration(
+                  labelText: "Stock",
+                  prefixIcon: const Icon(Iconsax.code_1),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red, width: 2),
+                  ),
+                ),
+              ),
 
-//               const SizedBox(height: 24),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      keyboardType: TextInputType.number,
+                      controller: productProvider.priceController,
+                      decoration: InputDecoration(
+                        labelText: "Price",
+                        prefixIcon: const Icon(Iconsax.dollar_circle4),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide(color: theme.cardColor),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide(
+                            color: theme.cardColor,
+                            width: 2,
+                          ),
+                        ),
+                        errorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: const BorderSide(color: Colors.red),
+                        ),
+                        focusedErrorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: const BorderSide(
+                            color: Colors.red,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: productProvider.unitController,
+                      decoration: InputDecoration(
+                        labelText: "Unit (KG / CRN)",
+                        prefixIcon: const Icon(Iconsax.level),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide(color: theme.cardColor),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide(
+                            color: theme.cardColor,
+                            width: 2,
+                          ),
+                        ),
+                        errorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: const BorderSide(color: Colors.red),
+                        ),
+                        focusedErrorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: const BorderSide(
+                            color: Colors.red,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
 
-//               /// 🔹 Product Name
-//               _buildLabel("Product Name"),
-//               _buildTextField(
-//                 provider.nameController,
-//                 "Enter product name",
-//                 prefix: Iconsax.box,
-//               ),
-//               const SizedBox(height: 16),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: markets.contains(productProvider.selectedMarket)
+                    ? productProvider.selectedMarket
+                    : null, // Set null if current value is not in the list
+                decoration: InputDecoration(
+                  labelText: "Market",
+                  prefixIcon: const Icon(Iconsax.safe_home),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red, width: 2),
+                  ),
+                ),
+                hint: const Text(
+                  "Select Market",
+                ), // Placeholder when value is null
+                items: markets.map((market) {
+                  return DropdownMenuItem(value: market, child: Text(market));
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) productProvider.setMarket(value);
+                },
+              ),
 
-//               /// 🔹 Price
-//               _buildLabel("Price"),
-//               _buildTextField(
-//                 provider.priceController,
-//                 "Enter price",
-//                 prefix: Iconsax.money,
-//                 isNumber: true,
-//               ),
-//               const SizedBox(height: 16),
+              const SizedBox(height: 16),
+              TextField(
+                keyboardType: TextInputType.number,
+                controller: productProvider.hypermarketController,
+                decoration: InputDecoration(
+                  labelText: "Hyper Market Price",
+                  prefixIcon: const Icon(Iconsax.box),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red, width: 2),
+                  ),
+                ),
+              ),
 
-//               /// 🔹 Unit
-//               _buildLabel("Unit"),
-//               _buildTextField(
-//                 provider.unitController,
-//                 "e.g. kg, litre, piece",
-//                 prefix: Iconsax.weight,
-//               ),
-//               const SizedBox(height: 16),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade700,
+                  ),
+                  onPressed: () {
+                    final hyperPrice =
+                        double.tryParse(
+                          productProvider.hypermarketController.text.trim(),
+                        ) ??
+                        0;
+                    final name = productProvider.nameController.text.trim();
+                    final itemCode = productProvider.itemCodeController.text
+                        .trim();
+                    final price =
+                        double.tryParse(
+                          productProvider.priceController.text.trim(),
+                        ) ??
+                        0;
+                    final stock =
+                        int.tryParse(
+                          productProvider.stockController.text.trim(),
+                        ) ??
+                        0;
+                    final unit = productProvider.unitController.text.trim();
+                    final market = productProvider.selectedMarket ?? "";
+                    final categoryId = productProvider.selectedCategory ?? "";
+                    final images = productProvider.images;
 
-//               /// 🔹 Stock Quantity
-//               _buildLabel("Stock Quantity"),
-//               _buildTextField(
-//                 provider.stockController,
-//                 "Enter stock quantity",
-//                 prefix: Iconsax.box,
-//                 isNumber: true,
-//               ),
-//               const SizedBox(height: 16),
+                    final editedProduct = Product(
+                      id: product.id,
+                      name: name,
+                      itemCode: itemCode,
+                      price: price,
+                      stock: stock,
+                      unit: unit,
+                      market: market,
+                      hyperMarket: hyperPrice,
+                      images: images,
+                      categoryId: categoryId,
+                      description: productProvider.descriptionController.text
+                          .trim(),
+                    );
 
-//               /// 🔹 Description
-//               _buildLabel("Description"),
-//               TextField(
-//                 controller: provider.descController,
-//                 maxLines: 3,
-//                 decoration: InputDecoration(
-//                   hintText: "Enter product description",
-//                   border: OutlineInputBorder(
-//                     borderRadius: BorderRadius.circular(12),
-//                   ),
-//                 ),
-//               ),
-//               const SizedBox(height: 16),
+                    productProvider.editProduct(product, editedProduct);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Product Edited Successfully'),
+                      ),
+                    );
+                    Navigator.pop(context);
+                  },
+                  child: const Text(
+                    "Save Changes",
+                    style: TextStyle(fontSize: 18),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 40),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-//               /// 🔹 Category Dropdown
-//               _buildLabel("Category"),
-//               const SizedBox(height: 8),
-//               Container(
-//                 width: double.infinity,
-//                 padding: const EdgeInsets.symmetric(horizontal: 12),
-//                 decoration: BoxDecoration(
-//                   borderRadius: BorderRadius.circular(12),
-//                   border: Border.all(color: Colors.grey.shade400),
-//                 ),
-//                 child: Consumer<CategoryProvider>(
-//                   builder: (context, categoryProvider, _) {
-//                     final categories = categoryProvider.categories;
-//                     if (categories.isEmpty) {
-//                       return const Padding(
-//                         padding: EdgeInsets.all(12.0),
-//                         child: Text("No categories found. Please add one."),
-//                       );
-//                     }
-//                     return DropdownButtonHideUnderline(
-//                       child: DropdownButton<String>(
-//                         hint: const Text("Select category"),
-//                         value: provider.selectedCategory,
-//                         items: categories.map((cat) {
-//                           return DropdownMenuItem(
-//                             value: cat.name,
-//                             child: Text(cat.name),
-//                           );
-//                         }).toList(),
-//                         onChanged: provider.setCategory,
-//                       ),
-//                     );
-//                   },
-//                 ),
-//               ),
-//               const SizedBox(height: 32),
-
-//               /// 🔹 Save Button
-//               SizedBox(
-//                 width: double.infinity,
-//                 height: 50,
-//                 child: ElevatedButton.icon(
-//                   onPressed: updateProduct,
-//                   icon: Icon(Iconsax.document_upload, color: Colors.black),
-//                   label: Text(
-//                     "Update Product",
-//                     style: const TextStyle(
-//                       fontSize: 16,
-//                       fontWeight: FontWeight.bold,
-//                       color: Colors.black,
-//                     ),
-//                   ),
-//                   style: ElevatedButton.styleFrom(
-//                     backgroundColor: Colors.grey.shade100,
-//                     shape: RoundedRectangleBorder(
-//                       borderRadius: BorderRadius.circular(10),
-//                     ),
-//                   ),
-//                 ),
-//               ),
-//             ],
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-
-//   Widget _buildLabel(String text) => Padding(
-//     padding: const EdgeInsets.only(bottom: 8),
-//     child: Text(
-//       text,
-//       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-//     ),
-//   );
-
-//   Widget _buildTextField(
-//     TextEditingController controller,
-//     String hint, {
-//     IconData? prefix,
-//     bool isNumber = false,
-//   }) {
-//     return TextField(
-//       controller: controller,
-//       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-//       decoration: InputDecoration(
-//         hintText: hint,
-//         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-//         prefixIcon: prefix != null ? Icon(prefix) : null,
-//       ),
-//     );
-//   }
-// }
-
-// void _showImageSourceDialog(BuildContext context, ProductProvider provider) {
-//   showModalBottomSheet(
-//     context: context,
-//     shape: const RoundedRectangleBorder(
-//       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-//     ),
-//     builder: (_) => Padding(
-//       padding: const EdgeInsets.all(16),
-//       child: Column(
-//         mainAxisSize: MainAxisSize.min,
-//         children: [
-//           ListTile(
-//             leading: const Icon(Iconsax.gallery),
-//             title: const Text("Pick from Gallery"),
-//             onTap: () {
-//               Navigator.pop(context);
-//               provider.pickMultipleImages();
-//             },
-//           ),
-//           ListTile(
-//             leading: const Icon(Iconsax.camera),
-//             title: const Text("Take a Photo"),
-//             onTap: () {
-//               Navigator.pop(context);
-//               provider.pickImageFromCamera();
-//             },
-//           ),
-//         ],
-//       ),
-//     ),
-//   );
-// }
+  Widget buildStatCard(
+    BuildContext context,
+    ProductProvider productProvider,
+    String image,
+  ) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: () {
+        showModalBottomSheet(
+          showDragHandle: true,
+          context: context,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          builder: (context) {
+            return Container(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  InkWell(
+                    onTap: () => productProvider.pickImageFromCamera(),
+                    child: Container(
+                      height: 40,
+                      width: double.infinity,
+                      child: Row(
+                        children: const [
+                          Icon(Iconsax.camera),
+                          SizedBox(width: 10),
+                          Text("Take Photo"),
+                        ],
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => productProvider.pickMultipleImages(context),
+                    child: Container(
+                      height: 40,
+                      width: double.infinity,
+                      child: Row(
+                        children: const [
+                          Icon(Iconsax.gallery),
+                          SizedBox(width: 10),
+                          Text("Select From Gallery"),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: image.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Iconsax.image5),
+                    const SizedBox(height: 10),
+                    Text(
+                      "Tap to add Photos",
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              )
+            : ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.memory(base64Decode(image), fit: BoxFit.cover),
+              ),
+      ),
+    );
+  }
+}

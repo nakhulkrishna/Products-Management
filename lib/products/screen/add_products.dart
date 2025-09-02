@@ -246,7 +246,7 @@ class AddProducts extends StatelessWidget {
                       controller: productProvider.unitController,
                       // obscureText: provider.obscurePassword,
                       decoration: InputDecoration(
-                        hint: Text("KG / CRT"),
+                        hint: Text("KG / CRN"),
                         labelText: "Unit",
                         prefixIcon: const Icon(Iconsax.level),
                         enabledBorder: OutlineInputBorder(
