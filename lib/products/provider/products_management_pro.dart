@@ -447,6 +447,9 @@ class Product {
   String market;
   String itemCode;
   double? hyperMarketPrice; // ✅ actual Hyper Market offer price
+    double? kgPrice;
+  double? ctrPrice;
+  double? pcsPrice;
 
   Product({
     required this.itemCode,
@@ -462,6 +465,9 @@ class Product {
     required this.categoryId,
     this.hyperMarket,
     this.hyperMarketPrice,
+        this.kgPrice,
+    this.ctrPrice,
+    this.pcsPrice,
   });
 
   Map<String, dynamic> toMap() {
@@ -479,6 +485,9 @@ class Product {
       'images': images,
       'categoryId': categoryId,
       'hyperMarketPrice': hyperMarketPrice,
+        'kgPrice': kgPrice,
+      'ctrPrice': ctrPrice,
+      'pcsPrice': pcsPrice,
     };
   }
 
@@ -512,6 +521,9 @@ class Product {
       description: map['description'] ?? '',
       images: List<String>.from(map['images'] ?? []),
       categoryId: map['categoryId'] ?? '',
+      kgPrice: parseDouble(map['kgPrice']),
+      ctrPrice: parseDouble(map['ctrPrice']),
+      pcsPrice: parseDouble(map['pcsPrice']),
     );
   }
 }
@@ -542,7 +554,10 @@ class ProductProvider extends ChangeNotifier {
   String searchQuery = "";
   String? selectedCategory;
   String? expandedProductId;
+  final TextEditingController kgPriceController = TextEditingController();
 
+  final TextEditingController ctnPriceController = TextEditingController();
+  final TextEditingController pcsPriceController = TextEditingController();
   final TextEditingController nameController = TextEditingController();
 
   final TextEditingController itemCodeController = TextEditingController();
@@ -570,6 +585,12 @@ class ProductProvider extends ChangeNotifier {
 
   void resetForm() {
     images.clear();
+    itemCodeController.clear();
+    kgPriceController.clear();
+    ctnPriceController.clear();
+    pcsPriceController.clear();
+    selectedCategory =null;
+    // categories.clear();
     hypermarketController.clear();
     nameController.clear();
     priceController.clear();

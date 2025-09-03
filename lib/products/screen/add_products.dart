@@ -14,8 +14,6 @@ class AddProducts extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
-
     final provider = Provider.of<StaffProvider>(context);
     final productProvider = Provider.of<ProductProvider>(context);
     final theme = Theme.of(context);
@@ -88,7 +86,7 @@ class AddProducts extends StatelessWidget {
                       : null,
                 ),
               ),
-         
+
               SizedBox(height: 16),
               TextField(
                 keyboardType: TextInputType.text,
@@ -174,7 +172,7 @@ class AddProducts extends StatelessWidget {
 
               const SizedBox(height: 16),
               TextField(
-                 keyboardType: TextInputType.number,
+                keyboardType: TextInputType.number,
                 controller: productProvider.stockController,
                 decoration: InputDecoration(
                   labelText: "Stcok",
@@ -205,7 +203,7 @@ class AddProducts extends StatelessWidget {
                 children: [
                   Expanded(
                     child: TextField(
-                        keyboardType: TextInputType.number,
+                      keyboardType: TextInputType.number,
                       controller: productProvider.priceController,
                       decoration: InputDecoration(
                         labelText: "price",
@@ -234,7 +232,7 @@ class AddProducts extends StatelessWidget {
                         ),
                         errorText:
                             provider.submitted && provider.username.isEmpty
-                            ? 'Password required'
+                            ? 'Price  required'
                             : null,
                       ),
                     ),
@@ -242,7 +240,7 @@ class AddProducts extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
-                        keyboardType: TextInputType.text,
+                      keyboardType: TextInputType.text,
                       controller: productProvider.unitController,
                       // obscureText: provider.obscurePassword,
                       decoration: InputDecoration(
@@ -332,7 +330,7 @@ class AddProducts extends StatelessWidget {
               ),
               SizedBox(height: 16),
               TextField(
-                  keyboardType: TextInputType.number,
+                keyboardType: TextInputType.number,
                 controller: productProvider.hypermarketController,
                 decoration: InputDecoration(
                   labelText: "Hyper Market Price",
@@ -358,7 +356,94 @@ class AddProducts extends StatelessWidget {
                       : null,
                 ),
               ),
-         
+
+              const SizedBox(height: 16),
+              TextField(
+                keyboardType: TextInputType.number,
+                controller: productProvider.kgPriceController,
+                decoration: InputDecoration(
+                  labelText: "Kg price",
+                  prefixIcon: const Icon(Iconsax.weight),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red, width: 2),
+                  ),
+                  errorText: provider.submitted && provider.username.isEmpty
+                      ? 'KG price required'
+                      : null,
+                ),
+              ),
+
+              const SizedBox(height: 16),
+              TextField(
+                keyboardType: TextInputType.number,
+                controller: productProvider.ctnPriceController,
+                decoration: InputDecoration(
+                  labelText: "Ctn price",
+                  prefixIcon: const Icon(Iconsax.box),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red, width: 2),
+                  ),
+                  errorText: provider.submitted && provider.username.isEmpty
+                      ? 'Ctn required'
+                      : null,
+                ),
+              ),
+
+              const SizedBox(height: 16),
+              TextField(
+                keyboardType: TextInputType.number,
+                controller: productProvider.pcsPriceController,
+                decoration: InputDecoration(
+                  labelText: "Pcs",
+                  prefixIcon: const Icon(Iconsax.paperclip),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide(color: theme.cardColor, width: 2),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: const BorderSide(color: Colors.red, width: 2),
+                  ),
+                  errorText: provider.submitted && provider.username.isEmpty
+                      ? 'Pcs required'
+                      : null,
+                ),
+              ),
+
               SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
@@ -368,19 +453,38 @@ class AddProducts extends StatelessWidget {
                     backgroundColor: Colors.green.shade700,
                   ),
                   onPressed: () async {
-                    final hyperPrice=double.tryParse(productProvider.hypermarketController.text.trim()) ?? 0;
+                    final hyperPrice =
+                        double.tryParse(
+                          productProvider.hypermarketController.text.trim(),
+                        ) ??
+                        0;
                     final name = productProvider.nameController.text.trim();
-                    final itemcode = productProvider.itemCodeController.text.trim();
+                    final itemcode = productProvider.itemCodeController.text
+                        .trim();
                     final price =
-                        double.tryParse(productProvider.priceController.text.trim()) ?? 0;
+                        double.tryParse(
+                          productProvider.priceController.text.trim(),
+                        ) ??
+                        0;
                     final stock =
-                        int.tryParse(productProvider.stockController.text.trim()) ?? 0;
+                        int.tryParse(
+                          productProvider.stockController.text.trim(),
+                        ) ??
+                        0;
                     final unit = productProvider.unitController.text.trim();
                     final market = productProvider.selectedMarket ?? "";
-                    final description = productProvider.descriptionController.text.trim();
+                    final description = productProvider
+                        .descriptionController
+                        .text
+                        .trim();
                     final categoryId = productProvider.selectedCategory ?? '';
                     final images = productProvider.images; // base64 list
 
+                    final kgPrice = double.tryParse(productProvider.kgPriceController.text) ?? 0;
+                        
+                    final ctnPrice = double.tryParse(productProvider.ctnPriceController.text) ?? 0;
+                        
+                    final pcsPrice = double.tryParse(productProvider.pcsPriceController.text) ?? 0;
                     if (name.isEmpty || unit.isEmpty || categoryId.isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -390,10 +494,8 @@ class AddProducts extends StatelessWidget {
                       return;
                     }
 
-
-
                     final product = Product(
-                      itemCode:itemcode,
+                      itemCode: itemcode,
                       market: market,
                       id: DateTime.now().microsecondsSinceEpoch.toString(),
                       name: name,
@@ -403,7 +505,10 @@ class AddProducts extends StatelessWidget {
                       description: description,
                       images: images,
                       categoryId: categoryId,
-                      hyperMarket: hyperPrice
+                      hyperMarket: hyperPrice,
+                      pcsPrice: pcsPrice,
+                      kgPrice: kgPrice,
+                      ctrPrice: ctnPrice
                     );
 
                     productProvider.addProduct(product);
