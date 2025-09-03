@@ -27,6 +27,7 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
+       
         ChangeNotifierProvider(create: (context) => UserProvider(),),
         ChangeNotifierProvider(create: (_) => CategoryProvider()),
         ChangeNotifierProvider(create: (_) => ProductProvider()),

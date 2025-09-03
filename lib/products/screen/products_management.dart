@@ -20,6 +20,10 @@ class ProductsManagement extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text("Products"),
+        leading: IconButton(onPressed: (){
+          productProvider.cancelProductListener();
+          Navigator.pop(context);
+        }, icon: Icon(Iconsax.arrow_left)),
         actions: [
           IconButton(
             onPressed: () {
@@ -222,20 +226,30 @@ class ProductsManagement extends StatelessWidget {
                                   padding: const EdgeInsets.all(8.0),
                                   child: Row(
                                     children: [
-                                      Container(
-                                        height: 100,
-                                        width: 100,
-                                        decoration: BoxDecoration(
-                                          color: theme.scaffoldBackgroundColor,
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
+                                      GestureDetector(
+                                        onTap: () {
+                                          if (products.images != null &&
+                                              products.images.isNotEmpty &&
+                                              products
+                                                  .images
+                                                  .first
+                                                  .isNotEmpty) {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    ImagePreviewPage(
+                                                      images: products.images,
+                                                    ),
+                                              ),
+                                            );
+                                          }
+                                        },
                                         child:
                                             (products.images == null ||
                                                 products.images.isEmpty ||
                                                 products.images.first.isEmpty)
-                                            ? Icon(Iconsax.image)
+                                            ? const Icon(Iconsax.image)
                                             : ClipRRect(
                                                 borderRadius:
                                                     BorderRadius.circular(12),
@@ -243,6 +257,7 @@ class ProductsManagement extends StatelessWidget {
                                                   base64Decode(
                                                     products.images.first,
                                                   ),
+                                                  fit: BoxFit.cover,
                                                 ),
                                               ),
                                       ),
@@ -255,7 +270,11 @@ class ProductsManagement extends StatelessWidget {
                                             child: Text(
                                               maxLines: 2,
                                               products.name,
-                                              style: theme.textTheme.bodyLarge,
+                                              style: theme.textTheme.bodyLarge!
+                                                  .copyWith(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
                                             ),
                                           ),
 
@@ -274,8 +293,7 @@ class ProductsManagement extends StatelessWidget {
                                                 onTap: () {
                                                   showModalBottomSheet(
                                                     context: context,
-                                                    isScrollControlled:
-                                                        true, // so it adjusts with keyboard
+                                                    isScrollControlled: true,
                                                     shape: RoundedRectangleBorder(
                                                       borderRadius:
                                                           BorderRadius.vertical(
@@ -290,12 +308,19 @@ class ProductsManagement extends StatelessWidget {
                                                       offerPriceController =
                                                           TextEditingController(
                                                             text:
-                                                                products.offerPrice ==
-                                                                    null
-                                                                ? ""
-                                                                : products
-                                                                      .offerPrice
-                                                                      .toString(),
+                                                                products
+                                                                    .offerPrice
+                                                                    ?.toString() ??
+                                                                "",
+                                                          );
+                                                      final TextEditingController
+                                                      hypermarketPriceController =
+                                                          TextEditingController(
+                                                            text:
+                                                                products
+                                                                    .hyperMarketPrice
+                                                                    ?.toString() ??
+                                                                "",
                                                           );
 
                                                       return Padding(
@@ -319,7 +344,7 @@ class ProductsManagement extends StatelessWidget {
                                                                   .start,
                                                           children: [
                                                             Text(
-                                                              "Set Offer Price",
+                                                              "Set Offer Prices",
                                                               style:
                                                                   Theme.of(
                                                                         context,
@@ -348,6 +373,26 @@ class ProductsManagement extends StatelessWidget {
                                                               ),
                                                             ),
                                                             SizedBox(
+                                                              height: 15,
+                                                            ),
+                                                            TextField(
+                                                              controller:
+                                                                  hypermarketPriceController,
+                                                              keyboardType:
+                                                                  TextInputType
+                                                                      .number,
+                                                              decoration: InputDecoration(
+                                                                labelText:
+                                                                    "Hypermarket Offer Price",
+                                                                border: OutlineInputBorder(
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        12,
+                                                                      ),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                            SizedBox(
                                                               height: 20,
                                                             ),
                                                             SizedBox(
@@ -360,21 +405,38 @@ class ProductsManagement extends StatelessWidget {
                                                                         offerPriceController
                                                                             .text,
                                                                       );
-                                                                  if (offerPrice !=
-                                                                      null) {
-                                                                    // Call provider to update product offer price
-                                                                    context
-                                                                        .read<
-                                                                          ProductProvider
-                                                                        >()
-                                                                        .setOfferPrice(
-                                                                          products,
-                                                                          offerPrice,
-                                                                        );
+                                                                  final hyperPrice =
+                                                                      double.tryParse(
+                                                                        hypermarketPriceController
+                                                                            .text,
+                                                                      );
 
+                                                                  if (offerPrice !=
+                                                                          null ||
+                                                                      hyperPrice !=
+                                                                          null) {
+                                                                    final provider =
+                                                                        context
+                                                                            .read<
+                                                                              ProductProvider
+                                                                            >();
+                                                                    if (offerPrice !=
+                                                                        null) {
+                                                                      provider.setOfferPrice(
+                                                                        products,
+                                                                        offerPrice,
+                                                                      );
+                                                                    }
+                                                                    if (hyperPrice !=
+                                                                        null) {
+                                                                      provider.setHyperMarketPrice(
+                                                                        products,
+                                                                        hyperPrice,
+                                                                      );
+                                                                    }
                                                                     Navigator.pop(
                                                                       context,
-                                                                    ); // close bottom sheet
+                                                                    );
                                                                   }
                                                                 },
                                                                 child: Text(
@@ -388,34 +450,57 @@ class ProductsManagement extends StatelessWidget {
                                                     },
                                                   );
                                                 },
-                                                child: Text(
-                                                  "₹${products.price.toString()}",
-                                                  style: theme
-                                                      .textTheme
-                                                      .bodySmall
-                                                      ?.copyWith(
-                                                        decoration:
-                                                            products.offerPrice ==
-                                                                null
-                                                            ? null
-                                                            : TextDecoration
-                                                                  .lineThrough,
-                                                        color: Colors.green,
-                                                      ),
+                                                child: Row(
+                                                  children: [
+                                                    Text(
+                                                      products.offerPrice ==
+                                                              null
+                                                          ?"Qr ${products.price
+                                                                .toString()}"
+                                                          : "Qr ${products.offerPrice
+                                                                .toString()}",
+                                                      style: theme
+                                                          .textTheme
+                                                          .bodySmall
+                                                          ?.copyWith(
+                                                            color: Colors.green,
+                                                            fontSize: 15,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                    ),
+                                                    SizedBox(width: 10),
+                                                    Text(
+                                                      products.hyperMarketPrice ==
+                                                              null
+                                                          ? "Qr ${products.hyperMarket
+                                                                .toString()}"
+                                                          : "Qr ${products.hyperMarketPrice.toString()}",
+                                                      style: theme
+                                                          .textTheme
+                                                          .bodySmall
+                                                          ?.copyWith(
+                                                            color: Colors.red,
+                                                            fontSize: 15,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
 
-                                              SizedBox(width: 10),
-                                              Text(
-                                                products.offerPrice == null
-                                                    ? ""
-                                                    : "₹${products.offerPrice.toString()}",
-                                                style: theme.textTheme.bodySmall
-                                                    ?.copyWith(
-                                                      color: Colors
-                                                          .red, // override color
-                                                    ),
-                                              ),
+                                              // SizedBox(width: 10),
+                                              // Text(
+                                              //   products.offerPrice == null
+                                              //       ? ""
+                                              //       : "₹${products.offerPrice.toString()}",
+                                              //   style: theme.textTheme.bodySmall
+                                              //       ?.copyWith(
+                                              //         color: Colors
+                                              //             .red, // override color
+                                              //       ),
+                                              // ),
                                             ],
                                           ),
                                         ],
@@ -461,7 +546,9 @@ class ProductsManagement extends StatelessWidget {
                   // productProvider.setProductForEdit(product);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => EditProducts(product: product,)),
+                    MaterialPageRoute(
+                      builder: (context) => EditProducts(product: product),
+                    ),
                   );
                 },
               ),
@@ -478,6 +565,44 @@ class ProductsManagement extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class ImagePreviewPage extends StatelessWidget {
+  final List<String> images;
+  final int initialIndex;
+
+  const ImagePreviewPage({
+    super.key,
+    required this.images,
+    this.initialIndex = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final PageController controller = PageController(initialPage: initialIndex);
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: PageView.builder(
+        controller: controller,
+        itemCount: images.length,
+        itemBuilder: (context, index) {
+          return InteractiveViewer(
+            child: Center(
+              child: Image.memory(
+                base64Decode(images[index]),
+                fit: BoxFit.contain,
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

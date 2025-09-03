@@ -37,29 +37,22 @@ class EditProducts extends StatelessWidget {
             children: [
               Consumer<ProductProvider>(
                 builder: (context, value, child) {
-                  return GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: value.images.isEmpty ? 1 : value.images.length,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: 1.2,
-                        ),
-                    itemBuilder: (context, index) {
-                      if (value.images.isEmpty) {
-                        return buildStatCard(context, productProvider, "");
-                      } else {
-                        return buildStatCard(
-                          context,
-                          productProvider,
-                          value.images[index],
-                        );
-                      }
-                    },
-                  );
+               return  GridView.builder(
+  shrinkWrap: true,
+  physics: const NeverScrollableScrollPhysics(),
+  itemCount: productProvider.images.isEmpty ? 1 : productProvider.images.length,
+  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+    crossAxisCount: 2,
+    crossAxisSpacing: 12,
+    mainAxisSpacing: 12,
+    childAspectRatio: 1.2,
+  ),
+  itemBuilder: (context, index) {
+    final image = productProvider.images.isEmpty ? "" : productProvider.images[index];
+    return buildStatCard(context, productProvider, image, );
+  },
+);
+
                 },
               ),
 
@@ -473,4 +466,6 @@ class EditProducts extends StatelessWidget {
       ),
     );
   }
+
+
 }

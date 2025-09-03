@@ -437,15 +437,16 @@ class Product {
   String id;
   String name;
   double price; // original price
-  double? offerPrice; // ✅ new field (nullable)
+  double? offerPrice; // ✅ optional offer price
   String unit;
   int stock;
   String description;
   List<String> images;
   String categoryId;
-  double? hyperMarket;
+  double? hyperMarket; // ✅ maybe used as hyper price reference
   String market;
   String itemCode;
+  double? hyperMarketPrice; // ✅ actual Hyper Market offer price
 
   Product({
     required this.itemCode,
@@ -460,22 +461,24 @@ class Product {
     required this.images,
     required this.categoryId,
     this.hyperMarket,
+    this.hyperMarketPrice,
   });
 
   Map<String, dynamic> toMap() {
     return {
       'itemCode': itemCode,
       'market': market,
-      "hyperPrice": hyperMarket,
+      'hyperPrice': hyperMarket, // keep key consistent
       'id': id,
       'name': name,
       'price': price,
-      'offerPrice': offerPrice, // ✅ save offer price too
+      'offerPrice': offerPrice,
       'unit': unit,
       'stock': stock,
       'description': description,
       'images': images,
       'categoryId': categoryId,
+      'hyperMarketPrice': hyperMarketPrice,
     };
   }
 
@@ -499,6 +502,7 @@ class Product {
       itemCode: map['itemCode'] ?? "",
       market: map['market'] ?? "",
       hyperMarket: parseDouble(map['hyperPrice']),
+      hyperMarketPrice: parseDouble(map['hyperMarketPrice']),
       id: map['id'] ?? '',
       name: map['name'] ?? '',
       price: parseDouble(map['price']) ?? 0.0,
@@ -631,7 +635,7 @@ class ProductProvider extends ChangeNotifier {
   }
 
   void listenProducts() {
-    _productSub?.cancel(); // prevent duplicate listeners
+
     _productSub = _firestore.collection('products').snapshots().listen((
       snapshot,
     ) {
@@ -640,6 +644,11 @@ class ProductProvider extends ChangeNotifier {
         ..addAll(snapshot.docs.map((doc) => Product.fromMap(doc.data())));
       notifyListeners();
     });
+  }
+
+  void cancelProductListener() {
+    _productSub?.cancel();
+    _productSub = null;
   }
 
   void listenOrders() {
@@ -750,6 +759,42 @@ class ProductProvider extends ChangeNotifier {
       throw Exception("Failed to set offer price");
     }
   }
+
+  Future<void> setHyperMarketPrice(Product product, double? hyperMarketPrice) async {
+  try {
+    await FirebaseFirestore.instance
+        .collection('products')
+        .doc(product.id)
+        .update({'hyperMarketPrice': hyperMarketPrice});
+
+    final index = _products.indexWhere((p) => p.id == product.id);
+    if (index != -1) {
+      _products[index] = Product(
+        itemCode: product.itemCode,
+        market: product.market,
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        offerPrice: product.offerPrice,
+        unit: product.unit,
+        stock: product.stock,
+        description: product.description,
+        images: product.images,
+        categoryId: product.categoryId,
+        hyperMarket: product.hyperMarket,
+        hyperMarketPrice: hyperMarketPrice, // ✅ update field
+      );
+    }
+
+    notifyListeners();
+    log("✅ HyperMarket price updated successfully");
+  } catch (e, stack) {
+    log("❌ Firestore setHyperMarketPrice Error: $e");
+    log(stack.toString());
+    throw Exception("Failed to set hypermarket price");
+  }
+}
+
 
   Future<void> pickMultipleImages(BuildContext context) async {
     final picker = ImagePicker();
