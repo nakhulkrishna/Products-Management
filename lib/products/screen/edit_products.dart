@@ -16,18 +16,7 @@ class EditProducts extends StatelessWidget {
     final productProvider = Provider.of<ProductProvider>(context);
     final theme = Theme.of(context);
     const List<String> markets = ["Hyper Market", "Local Market"];
-
-    productProvider.nameController.text = product.name;
-    productProvider.itemCodeController.text = product.itemCode;
-    productProvider.priceController.text = product.price.toString();
-    productProvider.stockController.text = product.stock.toString();
-    productProvider.unitController.text = product.unit;
-    productProvider.hypermarketController.text = product.hyperMarket.toString();
-    productProvider.selectedMarket = product.market;
-    productProvider.selectedCategory = product.categoryId;
-    productProvider.images = List<String>.from(product.images);
-    productProvider.descriptionController.text = product.description;
-
+    Future.microtask(() => productProvider.loadProductForEditingOnce(product));
     return Scaffold(
       appBar: AppBar(title: const Text("Edit Product")),
       body: SingleChildScrollView(
@@ -37,22 +26,31 @@ class EditProducts extends StatelessWidget {
             children: [
               Consumer<ProductProvider>(
                 builder: (context, value, child) {
-               return  GridView.builder(
-  shrinkWrap: true,
-  physics: const NeverScrollableScrollPhysics(),
-  itemCount: productProvider.images.isEmpty ? 1 : productProvider.images.length,
-  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-    crossAxisCount: 2,
-    crossAxisSpacing: 12,
-    mainAxisSpacing: 12,
-    childAspectRatio: 1.2,
-  ),
-  itemBuilder: (context, index) {
-    final image = productProvider.images.isEmpty ? "" : productProvider.images[index];
-    return buildStatCard(context, productProvider, image, );
-  },
-);
-
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: productProvider.images.isEmpty
+                        ? 1
+                        : productProvider.images.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: 1.2,
+                        ),
+                    itemBuilder: (context, index) {
+                      final image = productProvider.images.isEmpty
+                          ? ""
+                          : productProvider.images[index];
+                      return buildStatCard(
+                        context,
+                        productProvider,
+                        image,
+                        index,
+                      );
+                    },
+                  );
                 },
               ),
 
@@ -325,7 +323,7 @@ class EditProducts extends StatelessWidget {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green.shade700,
                   ),
-                  onPressed: () {
+                  onPressed: () async {
                     final hyperPrice =
                         double.tryParse(
                           productProvider.hypermarketController.text.trim(),
@@ -349,6 +347,7 @@ class EditProducts extends StatelessWidget {
                     final categoryId = productProvider.selectedCategory ?? "";
                     final images = productProvider.images;
 
+                    // ✅ Create updated product
                     final editedProduct = Product(
                       id: product.id,
                       name: name,
@@ -364,12 +363,15 @@ class EditProducts extends StatelessWidget {
                           .trim(),
                     );
 
-                    productProvider.editProduct(product, editedProduct);
+                    // ✅ Save updated product instead of old one
+                    await productProvider.saveEditedProduct(editedProduct);
+
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Product Edited Successfully'),
+                        content: Text("Product Edited Successfully"),
                       ),
                     );
+
                     Navigator.pop(context);
                   },
                   child: const Text(
@@ -390,82 +392,106 @@ class EditProducts extends StatelessWidget {
     BuildContext context,
     ProductProvider productProvider,
     String image,
+    int index, // add index to identify the image
   ) {
     final theme = Theme.of(context);
-    return InkWell(
-      onTap: () {
-        showModalBottomSheet(
-          showDragHandle: true,
-          context: context,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          builder: (context) {
-            return Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  InkWell(
-                    onTap: () => productProvider.pickImageFromCamera(),
-                    child: Container(
-                      height: 40,
-                      width: double.infinity,
-                      child: Row(
-                        children: const [
-                          Icon(Iconsax.camera),
-                          SizedBox(width: 10),
-                          Text("Take Photo"),
-                        ],
-                      ),
-                    ),
-                  ),
-                  InkWell(
-                    onTap: () => productProvider.pickMultipleImages(context),
-                    child: Container(
-                      height: 40,
-                      width: double.infinity,
-                      child: Row(
-                        children: const [
-                          Icon(Iconsax.gallery),
-                          SizedBox(width: 10),
-                          Text("Select From Gallery"),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+
+    return Stack(
+      children: [
+        InkWell(
+          onTap: () {
+            showModalBottomSheet(
+              showDragHandle: true,
+              context: context,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
               ),
+              builder: (context) {
+                return Container(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      InkWell(
+                        onTap: () => productProvider.pickImageFromCamera(),
+                        child: Container(
+                          height: 40,
+                          width: double.infinity,
+                          child: Row(
+                            children: const [
+                              Icon(Iconsax.camera),
+                              SizedBox(width: 10),
+                              Text("Take Photo"),
+                            ],
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () =>
+                            productProvider.pickMultipleImages(context),
+                        child: Container(
+                          height: 40,
+                          width: double.infinity,
+                          child: Row(
+                            children: const [
+                              Icon(Iconsax.gallery),
+                              SizedBox(width: 10),
+                              Text("Select From Gallery"),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             );
           },
-        );
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: image.isEmpty
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Iconsax.image5),
-                    const SizedBox(height: 10),
-                    Text(
-                      "Tap to add Photos",
-                      style: theme.textTheme.bodyMedium,
+          child: Container(
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: image.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Iconsax.image5),
+                        const SizedBox(height: 10),
+                        Text(
+                          "Tap to add Photos",
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
                     ),
-                  ],
+                  )
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(base64Decode(image), fit: BoxFit.cover),
+                  ),
+          ),
+        ),
+        // Remove Button
+        if (image.isNotEmpty)
+          Positioned(
+            top: 4,
+            right: 4,
+            child: InkWell(
+              onTap: () {
+                productProvider.removeImage(index); // call remove function
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
                 ),
-              )
-            : ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.memory(base64Decode(image), fit: BoxFit.cover),
+                padding: const EdgeInsets.all(4),
+                child: const Icon(Icons.close, color: Colors.white, size: 18),
               ),
-      ),
+            ),
+          ),
+      ],
     );
   }
-
-
 }

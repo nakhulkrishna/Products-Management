@@ -19,11 +19,9 @@ class ProductsManagement extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Text("Products"),
-        leading: IconButton(onPressed: (){
-          productProvider.cancelProductListener();
-          Navigator.pop(context);
-        }, icon: Icon(Iconsax.arrow_left)),
+
         actions: [
           IconButton(
             onPressed: () {
@@ -262,248 +260,248 @@ class ProductsManagement extends StatelessWidget {
                                               ),
                                       ),
                                       SizedBox(width: 10),
-                                      Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              maxLines: 2,
+                                      Expanded(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
                                               products.name,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              softWrap: true,
                                               style: theme.textTheme.bodyLarge!
                                                   .copyWith(
                                                     fontSize: 12,
                                                     fontWeight: FontWeight.bold,
                                                   ),
                                             ),
-                                          ),
-
-                                          Text(
-                                            products.categoryId,
-                                            style: theme.textTheme.bodyMedium,
-                                          ),
-                                          Text(
-                                            products.market,
-                                            style: theme.textTheme.bodyMedium,
-                                          ),
-                                          SizedBox(height: 10),
-                                          Row(
-                                            children: [
-                                              InkWell(
-                                                onTap: () {
-                                                  showModalBottomSheet(
-                                                    context: context,
-                                                    isScrollControlled: true,
-                                                    shape: RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.vertical(
-                                                            top:
-                                                                Radius.circular(
-                                                                  20,
-                                                                ),
-                                                          ),
-                                                    ),
-                                                    builder: (context) {
-                                                      final TextEditingController
-                                                      offerPriceController =
-                                                          TextEditingController(
-                                                            text:
-                                                                products
-                                                                    .offerPrice
-                                                                    ?.toString() ??
-                                                                "",
-                                                          );
-                                                      final TextEditingController
-                                                      hypermarketPriceController =
-                                                          TextEditingController(
-                                                            text:
-                                                                products
-                                                                    .hyperMarketPrice
-                                                                    ?.toString() ??
-                                                                "",
-                                                          );
-
-                                                      return Padding(
-                                                        padding: EdgeInsets.only(
-                                                          left: 16,
-                                                          right: 16,
-                                                          top: 20,
-                                                          bottom:
-                                                              MediaQuery.of(
-                                                                    context,
-                                                                  )
-                                                                  .viewInsets
-                                                                  .bottom +
-                                                              20,
-                                                        ),
-                                                        child: Column(
-                                                          mainAxisSize:
-                                                              MainAxisSize.min,
-                                                          crossAxisAlignment:
-                                                              CrossAxisAlignment
-                                                                  .start,
-                                                          children: [
-                                                            Text(
-                                                              "Set Offer Prices",
-                                                              style:
-                                                                  Theme.of(
-                                                                        context,
-                                                                      )
-                                                                      .textTheme
-                                                                      .headlineSmall,
+                                        
+                                            Text(
+                                              products.categoryId,
+                                              style: theme.textTheme.bodyMedium,
+                                            ),
+                                            // Text(
+                                            //   products.market,
+                                            //   style: theme.textTheme.bodyMedium,
+                                            // ),
+                                            SizedBox(height: 10),
+                                            Row(
+                                              children: [
+                                                InkWell(
+                                                  onTap: () {
+                                                    showModalBottomSheet(
+                                                      context: context,
+                                                      isScrollControlled: true,
+                                                      shape: RoundedRectangleBorder(
+                                                        borderRadius:
+                                                            BorderRadius.vertical(
+                                                              top:
+                                                                  Radius.circular(
+                                                                    20,
+                                                                  ),
                                                             ),
-                                                            SizedBox(
-                                                              height: 15,
-                                                            ),
-                                                            TextField(
-                                                              controller:
-                                                                  offerPriceController,
-                                                              keyboardType:
-                                                                  TextInputType
-                                                                      .number,
-                                                              decoration: InputDecoration(
-                                                                labelText:
-                                                                    "Offer Price",
-                                                                border: OutlineInputBorder(
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        12,
-                                                                      ),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                            SizedBox(
-                                                              height: 15,
-                                                            ),
-                                                            TextField(
-                                                              controller:
-                                                                  hypermarketPriceController,
-                                                              keyboardType:
-                                                                  TextInputType
-                                                                      .number,
-                                                              decoration: InputDecoration(
-                                                                labelText:
-                                                                    "Hypermarket Offer Price",
-                                                                border: OutlineInputBorder(
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        12,
-                                                                      ),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                            SizedBox(
-                                                              height: 20,
-                                                            ),
-                                                            SizedBox(
-                                                              width: double
-                                                                  .infinity,
-                                                              child: ElevatedButton(
-                                                                onPressed: () {
-                                                                  final offerPrice =
-                                                                      double.tryParse(
-                                                                        offerPriceController
-                                                                            .text,
-                                                                      );
-                                                                  final hyperPrice =
-                                                                      double.tryParse(
-                                                                        hypermarketPriceController
-                                                                            .text,
-                                                                      );
-
-                                                                  if (offerPrice !=
-                                                                          null ||
-                                                                      hyperPrice !=
-                                                                          null) {
-                                                                    final provider =
-                                                                        context
-                                                                            .read<
-                                                                              ProductProvider
-                                                                            >();
-                                                                    if (offerPrice !=
-                                                                        null) {
-                                                                      provider.setOfferPrice(
-                                                                        products,
-                                                                        offerPrice,
-                                                                      );
-                                                                    }
-                                                                    if (hyperPrice !=
-                                                                        null) {
-                                                                      provider.setHyperMarketPrice(
-                                                                        products,
-                                                                        hyperPrice,
-                                                                      );
-                                                                    }
-                                                                    Navigator.pop(
+                                                      ),
+                                                      builder: (context) {
+                                                        final TextEditingController
+                                                        offerPriceController =
+                                                            TextEditingController(
+                                                              text:
+                                                                  products
+                                                                      .offerPrice
+                                                                      ?.toString() ??
+                                                                  "",
+                                                            );
+                                                        final TextEditingController
+                                                        hypermarketPriceController =
+                                                            TextEditingController(
+                                                              text:
+                                                                  products
+                                                                      .hyperMarketPrice
+                                                                      ?.toString() ??
+                                                                  "",
+                                                            );
+                                        
+                                                        return Padding(
+                                                          padding: EdgeInsets.only(
+                                                            left: 16,
+                                                            right: 16,
+                                                            top: 20,
+                                                            bottom:
+                                                                MediaQuery.of(
                                                                       context,
-                                                                    );
-                                                                  }
-                                                                },
-                                                                child: Text(
-                                                                  "Save",
+                                                                    )
+                                                                    .viewInsets
+                                                                    .bottom +
+                                                                20,
+                                                          ),
+                                                          child: Column(
+                                                            mainAxisSize:
+                                                                MainAxisSize.min,
+                                                            crossAxisAlignment:
+                                                                CrossAxisAlignment
+                                                                    .start,
+                                                            children: [
+                                                              Text(
+                                                                "Set Offer Prices",
+                                                                style:
+                                                                    Theme.of(
+                                                                          context,
+                                                                        )
+                                                                        .textTheme
+                                                                        .headlineSmall,
+                                                              ),
+                                                              SizedBox(
+                                                                height: 15,
+                                                              ),
+                                                              TextField(
+                                                                controller:
+                                                                    offerPriceController,
+                                                                keyboardType:
+                                                                    TextInputType
+                                                                        .number,
+                                                                decoration: InputDecoration(
+                                                                  labelText:
+                                                                      "Offer Price",
+                                                                  border: OutlineInputBorder(
+                                                                    borderRadius:
+                                                                        BorderRadius.circular(
+                                                                          12,
+                                                                        ),
+                                                                  ),
                                                                 ),
                                                               ),
+                                                              SizedBox(
+                                                                height: 15,
+                                                              ),
+                                                              TextField(
+                                                                controller:
+                                                                    hypermarketPriceController,
+                                                                keyboardType:
+                                                                    TextInputType
+                                                                        .number,
+                                                                decoration: InputDecoration(
+                                                                  labelText:
+                                                                      "Hypermarket Offer Price",
+                                                                  border: OutlineInputBorder(
+                                                                    borderRadius:
+                                                                        BorderRadius.circular(
+                                                                          12,
+                                                                        ),
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                              SizedBox(
+                                                                height: 20,
+                                                              ),
+                                                              SizedBox(
+                                                                width: double
+                                                                    .infinity,
+                                                                child: ElevatedButton(
+                                                                  onPressed: () {
+                                                                    final offerPrice =
+                                                                        double.tryParse(
+                                                                          offerPriceController
+                                                                              .text,
+                                                                        );
+                                                                    final hyperPrice =
+                                                                        double.tryParse(
+                                                                          hypermarketPriceController
+                                                                              .text,
+                                                                        );
+                                        
+                                                                    if (offerPrice !=
+                                                                            null ||
+                                                                        hyperPrice !=
+                                                                            null) {
+                                                                      final provider =
+                                                                          context
+                                                                              .read<
+                                                                                ProductProvider
+                                                                              >();
+                                                                      if (offerPrice !=
+                                                                          null) {
+                                                                        provider.setOfferPrice(
+                                                                          products,
+                                                                          offerPrice,
+                                                                        );
+                                                                      }
+                                                                      if (hyperPrice !=
+                                                                          null) {
+                                                                        provider.setHyperMarketPrice(
+                                                                          products,
+                                                                          hyperPrice,
+                                                                        );
+                                                                      }
+                                                                      Navigator.pop(
+                                                                        context,
+                                                                      );
+                                                                    }
+                                                                  },
+                                                                  child: Text(
+                                                                    "Save",
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        );
+                                                      },
+                                                    );
+                                                  },
+                                                  child: Row(
+                                                    children: [
+                                                      Text(
+                                                        products.offerPrice ==
+                                                                null
+                                                            ? "Qr ${products.price.toString()}"
+                                                            : "Qr ${products.offerPrice.toString()}",
+                                                        style: theme
+                                                            .textTheme
+                                                            .bodySmall
+                                                            ?.copyWith(
+                                                              color: Colors.green,
+                                                              fontSize: 15,
+                                                              fontWeight:
+                                                                  FontWeight.bold,
                                                             ),
-                                                          ],
-                                                        ),
-                                                      );
-                                                    },
-                                                  );
-                                                },
-                                                child: Row(
-                                                  children: [
-                                                    Text(
-                                                      products.offerPrice ==
-                                                              null
-                                                          ?"Qr ${products.price
-                                                                .toString()}"
-                                                          : "Qr ${products.offerPrice
-                                                                .toString()}",
-                                                      style: theme
-                                                          .textTheme
-                                                          .bodySmall
-                                                          ?.copyWith(
-                                                            color: Colors.green,
-                                                            fontSize: 15,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                          ),
-                                                    ),
-                                                    SizedBox(width: 10),
-                                                    Text(
-                                                      products.hyperMarketPrice ==
-                                                              null
-                                                          ? "Qr ${products.hyperMarket
-                                                                .toString()}"
-                                                          : "Qr ${products.hyperMarketPrice.toString()}",
-                                                      style: theme
-                                                          .textTheme
-                                                          .bodySmall
-                                                          ?.copyWith(
-                                                            color: Colors.red,
-                                                            fontSize: 15,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                          ),
-                                                    ),
-                                                  ],
+                                                      ),
+                                                      SizedBox(width: 10),
+                                                      Text(
+                                                        products.hyperMarketPrice ==
+                                                                null
+                                                            ? "Qr ${products.hyperMarket.toString()}"
+                                                            : "Qr ${products.hyperMarketPrice.toString()}",
+                                                        style: theme
+                                                            .textTheme
+                                                            .bodySmall
+                                                            ?.copyWith(
+                                                              color: Colors.red,
+                                                              fontSize: 15,
+                                                              fontWeight:
+                                                                  FontWeight.bold,
+                                                            ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
-                                              ),
-
-                                              // SizedBox(width: 10),
-                                              // Text(
-                                              //   products.offerPrice == null
-                                              //       ? ""
-                                              //       : "₹${products.offerPrice.toString()}",
-                                              //   style: theme.textTheme.bodySmall
-                                              //       ?.copyWith(
-                                              //         color: Colors
-                                              //             .red, // override color
-                                              //       ),
-                                              // ),
-                                            ],
-                                          ),
-                                        ],
+                                        
+                                                // SizedBox(width: 10),
+                                                // Text(
+                                                //   products.offerPrice == null
+                                                //       ? ""
+                                                //       : "₹${products.offerPrice.toString()}",
+                                                //   style: theme.textTheme.bodySmall
+                                                //       ?.copyWith(
+                                                //         color: Colors
+                                                //             .red, // override color
+                                                //       ),
+                                                // ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -541,9 +539,9 @@ class ProductsManagement extends StatelessWidget {
                 title: Text("Edit"),
                 onTap: () {
                   Navigator.pop(context); // close bottom sheet
-                  // Reset form and open AddProducts screen in edit mode
+                
                   final productProvider = context.read<ProductProvider>();
-                  // productProvider.setProductForEdit(product);
+                
                   Navigator.push(
                     context,
                     MaterialPageRoute(

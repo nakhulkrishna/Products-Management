@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:loading_indicator/loading_indicator.dart';
 import 'package:products_catelogs/authentication/provider/authentication_provider.dart';
 import 'package:products_catelogs/authentication/screens/authentication_screen.dart';
+import 'package:products_catelogs/authentication/screens/reg.dart';
+import 'package:products_catelogs/dashboard/screen/dash_board_reponsive.dart';
 import 'package:products_catelogs/dashboard/screen/dashboard_screen.dart';
 
 import 'package:provider/provider.dart';
@@ -14,20 +16,30 @@ class SplashScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
 
-    // Check login after 2 seconds
+    // Check login and toggle after 2 seconds
     Future.delayed(const Duration(seconds: 2), () async {
       bool isLoggedIn = await userProvider.checkLogin();
 
       if (isLoggedIn) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
+          MaterialPageRoute(builder: (_) => const ResponsiveDashboard()),
         );
       } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
+        // Fetch registration toggle
+        bool canRegister = await userProvider.isRegistrationEnabled();
+
+        if (canRegister) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const RegistrationScreen()),
+          );
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()), // direct login
+          );
+        }
       }
     });
 

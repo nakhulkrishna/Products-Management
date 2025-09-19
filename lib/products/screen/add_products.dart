@@ -359,7 +359,7 @@ class AddProducts extends StatelessWidget {
 
               const SizedBox(height: 16),
               TextField(
-                keyboardType: TextInputType.number,
+                keyboardType: TextInputType.text,
                 controller: productProvider.kgPriceController,
                 decoration: InputDecoration(
                   labelText: "Kg price",

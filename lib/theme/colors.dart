@@ -16,3 +16,19 @@ class AppColors {
   static const darkSubText = Color(0xFFB0B0B0);     // Softer gray
 }
 
+
+
+
+class TabletColors {
+  // Primary & Accent Colors
+  static const primaryRed = Color(0xFFD80032);   // Strong red
+  static const secondaryRed = Color(0xFFEF233C); // Lighter red / accent
+
+  // Backgrounds
+  static const lightBackground = Color(0xFFEDF2F4); // Very light gray / soft background
+  static const darkBackground = Color(0xFF2B2D42);  // Dark blue / tablet dark mode background
+
+  // Text / Subtext
+  static const lightText = Color(0xFF2B2D42);   // Dark blue for text on light bg
+  static const subText = Color(0xFF8D99AE);     // Grayish-blue for secondary text
+}

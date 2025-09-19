@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:products_catelogs/authentication/provider/authentication_provider.dart';
+import 'package:products_catelogs/authentication/screens/splash_screen.dart';
 import 'package:products_catelogs/products/provider/products_management_pro.dart';
 import 'package:products_catelogs/settings/provider/setting_provider.dart';
 import 'package:products_catelogs/settings/screens/about_us.dart';
@@ -64,6 +66,19 @@ class Settings extends StatelessWidget {
         "icon": Iconsax.brush_1,
         "onTap": () {
         context.read<ProductProvider>().deleteAllOrders();
+        },
+      },
+      {
+        "title": "Log Out",
+        "icon": Iconsax.logout,
+        "onTap": () {
+        context.read<UserProvider>().logout();
+Navigator.pushAndRemoveUntil(
+  context,
+  MaterialPageRoute(builder: (context) => const SplashScreen()),
+  (Route<dynamic> route) => false, // removes all previous routes
+);
+
         },
       },
       {

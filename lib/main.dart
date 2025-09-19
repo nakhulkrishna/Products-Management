@@ -4,6 +4,7 @@ import 'package:products_catelogs/authentication/provider/authentication_provide
 import 'package:products_catelogs/authentication/screens/splash_screen.dart';
 // import 'package:products_catelogs/Home/screens/home_screen.dart';
 import 'package:products_catelogs/categories/provider/category_provider.dart';
+import 'package:products_catelogs/dashboard/provider/side_bar_provider.dart';
 import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
 import 'package:products_catelogs/dashboard/screen/dashboard_screen.dart';
 import 'package:products_catelogs/firebase_options.dart';
@@ -27,7 +28,7 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-       
+        ChangeNotifierProvider(create: (_) => SidebarProvider()),
         ChangeNotifierProvider(create: (context) => UserProvider(),),
         ChangeNotifierProvider(create: (_) => CategoryProvider()),
         ChangeNotifierProvider(create: (_) => ProductProvider()),
