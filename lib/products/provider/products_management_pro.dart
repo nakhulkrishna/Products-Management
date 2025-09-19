@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 
-
 class Category {
   String id;
   String name;
@@ -98,7 +97,7 @@ class Product {
   String market;
   String itemCode;
   double? hyperMarketPrice; // ✅ actual Hyper Market offer price
-    double? kgPrice;
+  double? kgPrice;
   double? ctrPrice;
   double? pcsPrice;
 
@@ -116,7 +115,7 @@ class Product {
     required this.categoryId,
     this.hyperMarket,
     this.hyperMarketPrice,
-        this.kgPrice,
+    this.kgPrice,
     this.ctrPrice,
     this.pcsPrice,
   });
@@ -136,7 +135,7 @@ class Product {
       'images': images,
       'categoryId': categoryId,
       'hyperMarketPrice': hyperMarketPrice,
-        'kgPrice': kgPrice,
+      'kgPrice': kgPrice,
       'ctrPrice': ctrPrice,
       'pcsPrice': pcsPrice,
     };
@@ -177,111 +176,193 @@ class Product {
       pcsPrice: parseDouble(map['pcsPrice']),
     );
   }
+  Product copyWith({
+    String? id,
+    String? name,
+    String? itemCode,
+    double? price,
+    double? offerPrice,
+    String? unit,
+    int? stock,
+    String? description,
+    List<String>? images,
+    String? categoryId,
+    double? hyperMarket,
+    double? hyperMarketPrice,
+    String? market,
+    double? kgPrice,
+    double? ctrPrice,
+    double? pcsPrice,
+  }) {
+    return Product(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      itemCode: itemCode ?? this.itemCode,
+      price: price ?? this.price,
+      offerPrice: offerPrice ?? this.offerPrice,
+      unit: unit ?? this.unit,
+      stock: stock ?? this.stock,
+      description: description ?? this.description,
+      images: images ?? List<String>.from(this.images),
+      categoryId: categoryId ?? this.categoryId,
+      hyperMarket: hyperMarket ?? this.hyperMarket,
+      hyperMarketPrice: hyperMarketPrice ?? this.hyperMarketPrice,
+      market: market ?? this.market,
+      kgPrice: kgPrice ?? this.kgPrice,
+      ctrPrice: ctrPrice ?? this.ctrPrice,
+      pcsPrice: pcsPrice ?? this.pcsPrice,
+    );
+  }
 }
 
 class ProductProvider extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  ProductProvider() {
-    listenProducts();
-    listenCategories();
-    listenOrders();
-  }
-
+  // ------------------- STATE -------------------
   final List<Product> _products = [];
   final List<Order> _orders = [];
   final List<Category> _categories = [];
   List<String> images = [];
+  Product? _editingProduct;
+
+  // Form Controllers
+  final nameController = TextEditingController();
+  final itemCodeController = TextEditingController();
+  final priceController = TextEditingController();
+  final offerPriceController = TextEditingController();
+  final stockController = TextEditingController();
+  final unitController = TextEditingController();
+  final kgPriceController = TextEditingController();
+  final ctnPriceController = TextEditingController();
+  final pcsPriceController = TextEditingController();
+  final descriptionController = TextEditingController();
+  final hypermarketController = TextEditingController();
+  final marketController = TextEditingController();
+
+  String? selectedCategory;
+  String? selectedMarket;
+  String searchQuery = "";
+  String? expandedProductId;
+  List<String> selectedFilterCategories = [];
+
   bool _isFormFilled = false;
 
+  // ------------------- GETTERS -------------------
   List<Product> get products => List.unmodifiable(_products);
   List<Order> get orders => List.unmodifiable(_orders);
   List<Category> get categories => List.unmodifiable(_categories);
 
-  double get totalOrderValue {
-    return _orders.fold(0.0, (sum, order) => sum + order.total);
+  double get totalOrderValue =>
+      _orders.fold(0.0, (sum, order) => sum + order.total);
+
+  List<Product> get filteredProducts {
+    return _products.where((p) {
+      final matchesSearch =
+          searchQuery.isEmpty ||
+          p.name.toLowerCase().contains(searchQuery.toLowerCase());
+      final matchesCategory =
+          selectedFilterCategories.isEmpty ||
+          selectedFilterCategories.contains(p.categoryId);
+      return matchesSearch && matchesCategory;
+    }).toList();
   }
 
-  String searchQuery = "";
-  String? selectedCategory;
-  String? expandedProductId;
-  final TextEditingController kgPriceController = TextEditingController();
+  // ------------------- FIRESTORE SUBSCRIPTIONS -------------------
+  StreamSubscription<QuerySnapshot>? _productSub;
+  StreamSubscription<QuerySnapshot>? _ordersSub;
+  StreamSubscription<QuerySnapshot>? _categorySub;
 
-  final TextEditingController ctnPriceController = TextEditingController();
-  final TextEditingController pcsPriceController = TextEditingController();
-  final TextEditingController nameController = TextEditingController();
-
-  final TextEditingController itemCodeController = TextEditingController();
-  final TextEditingController priceController = TextEditingController();
-  final TextEditingController unitController = TextEditingController();
-  final TextEditingController descController = TextEditingController();
-  final TextEditingController stockController = TextEditingController();
-  final TextEditingController offerPriceController = TextEditingController();
-  final TextEditingController hypermarketController = TextEditingController();
-
-  final marketController = TextEditingController();
-  final descriptionController = TextEditingController();
-
-  String? selectedMarket; // Add this for the dropdown market selection
-
-  // Existing methods...
-
-  // Setter for market
-  void setMarket(String? market) {
-    selectedMarket = market;
-    notifyListeners();
+  // ------------------- INITIALIZER -------------------
+  ProductProvider() {
+    _listenProducts();
+    _listenCategories();
+    _listenOrders();
   }
 
-
-
-  void resetForm() {
-    images.clear();
-    itemCodeController.clear();
-    kgPriceController.clear();
-    ctnPriceController.clear();
-    pcsPriceController.clear();
-    selectedCategory =null;
-    // categories.clear();
-    hypermarketController.clear();
-    nameController.clear();
-    priceController.clear();
-    unitController.clear();
-    descController.clear();
-    stockController.clear();
-    selectedMarket = null; // reset market
-    _isFormFilled = false;
-    notifyListeners();
+  // ------------------- PRODUCTS -------------------
+  void _listenProducts() {
+    _productSub?.cancel();
+    _productSub = _firestore.collection('products').snapshots().listen((
+      snapshot,
+    ) {
+      _products
+        ..clear()
+        ..addAll(snapshot.docs.map((doc) => Product.fromMap(doc.data())));
+      notifyListeners();
+    }, onError: (error) => log('❌ listenProducts error: $error'));
   }
 
-  StreamSubscription? _productSub;
-  StreamSubscription? _ordersSub;
-  StreamSubscription? _categorySub;
-
-  void setSearchQuery(String query) {
-    searchQuery = query;
-    notifyListeners();
+  Future<void> addProduct(Product product) async {
+    try {
+      await _firestore
+          .collection('products')
+          .doc(product.id)
+          .set(product.toMap());
+      notifyListeners();
+    } catch (e, stack) {
+      log("❌ addProduct Error: $e");
+      log(stack.toString());
+      throw Exception("Failed to add product");
+    }
   }
 
-  void setCategory(String? categoryId) {
-    selectedCategory = categoryId;
-    notifyListeners();
+  Future<void> editProduct(Product oldProduct, Product newProduct) async {
+    try {
+      await _firestore
+          .collection('products')
+          .doc(oldProduct.id)
+          .update(newProduct.toMap());
+      // final index = _products.indexWhere((p) => p.id == oldProduct.id);
+      // if (index != -1) _products[index] = newProduct;
+
+      final index = _products.indexWhere((p) => p.id == newProduct.id);
+      if (index != -1) {
+        _products[index] = newProduct;
+      } else {
+        // Optional: if the product isn't found, add it (safety)
+        _products.add(newProduct);
+      }
+
+      // ✅ Notify listeners to update the UI immediately
+    
+      notifyListeners();
+      log("✅ Product updated successfully");
+    } catch (e, stack) {
+      log("❌ editProduct Error: $e");
+      log(stack.toString());
+      throw Exception("Failed to edit product");
+    }
+  }
+
+  Future<void> deleteProduct(String id) async {
+    try {
+      await _firestore.collection('products').doc(id).delete();
+      _products.removeWhere((p) => p.id == id);
+      notifyListeners();
+    } catch (e, stack) {
+      log("❌ deleteProduct Error: $e");
+      log(stack.toString());
+      throw Exception("Failed to delete product");
+    }
   }
 
   void toggleExpanded(String productId) {
-    if (expandedProductId == productId) {
-      expandedProductId = null;
-    } else {
-      expandedProductId = productId;
-    }
+    expandedProductId = expandedProductId == productId ? null : productId;
     notifyListeners();
   }
 
-  void updateSearchQuery(String query) {
-    searchQuery = query;
-    notifyListeners(); // triggers UI rebuild for filteredProducts
+  // ------------------- CATEGORIES -------------------
+  void _listenCategories() {
+    _categorySub?.cancel();
+    _categorySub = _firestore.collection('categories').snapshots().listen((
+      snapshot,
+    ) {
+      _categories
+        ..clear()
+        ..addAll(snapshot.docs.map((doc) => Category.fromMap(doc.data())));
+      notifyListeners();
+    }, onError: (error) => log('❌ listenCategories error: $error'));
   }
-
-  List<String> selectedFilterCategories = [];
 
   void toggleFilterCategory(String categoryId) {
     if (selectedFilterCategories.contains(categoryId)) {
@@ -292,92 +373,119 @@ class ProductProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<Product> get filteredProducts {
-    return _products.where((p) {
-      final matchesSearch =
-          searchQuery.isEmpty ||
-          p.name.toLowerCase().contains(searchQuery.toLowerCase());
-
-      final matchesCategory =
-          selectedFilterCategories.isEmpty ||
-          selectedFilterCategories.contains(p.categoryId);
-
-      return matchesSearch && matchesCategory;
-    }).toList();
+  void setCategory(String? categoryId) {
+    selectedCategory = categoryId;
+    notifyListeners();
   }
 
-  void listenProducts() {
-
-    _productSub = _firestore.collection('products').snapshots().listen((
-      snapshot,
-    ) {
-      _products
-        ..clear()
-        ..addAll(snapshot.docs.map((doc) => Product.fromMap(doc.data())));
-      notifyListeners();
-    });
+  void setSearchQuery(String query) {
+    searchQuery = query;
+    notifyListeners();
   }
 
-  void cancelProductListener() {
-    _productSub?.cancel();
-    _productSub = null;
+  void setMarket(String? market) {
+    selectedMarket = market;
+    notifyListeners();
   }
 
-  void listenOrders() {
-    _ordersSub?.cancel(); // prevent duplicate listeners
+  // ------------------- ORDERS -------------------
+  void _listenOrders() {
+    _ordersSub?.cancel();
     _ordersSub = _firestore.collection('orders').snapshots().listen((snapshot) {
       _orders
         ..clear()
         ..addAll(snapshot.docs.map((doc) => Order.fromMap(doc.data())));
       notifyListeners();
-    });
+    }, onError: (error) => log('❌ listenOrders error: $error'));
   }
 
-  Future<void> addProduct(Product product) async {
+  Future<void> deleteAllOrders() async {
     try {
-      await FirebaseFirestore.instance
-          .collection('products')
-          .doc(product.id)
-          .set(product.toMap());
-      // _products.add(product);
+      final snapshot = await _firestore.collection('orders').get();
+      final batch = _firestore.batch();
+      for (var doc in snapshot.docs) batch.delete(doc.reference);
+      await batch.commit();
+      _orders.clear();
       notifyListeners();
-    } catch (e, stack) {
-      log("Firestore addProduct Error: $e");
-      log(stack.toString());
-      throw Exception("Failed to add product");
+      log("✅ All orders deleted successfully");
+    } catch (e) {
+      log("❌ deleteAllOrders error: $e");
     }
   }
 
-  Future<void> deleteProduct(String id) async {
+  Future<void> setOfferPrice(Product product, double? offerPrice) async {
+    await _updateProductField(product, {'offerPrice': offerPrice});
+  }
+
+  Future<void> setHyperMarketPrice(
+    Product product,
+    double? hyperMarketPrice,
+  ) async {
+    await _updateProductField(product, {'hyperMarketPrice': hyperMarketPrice});
+  }
+
+  Future<void> _updateProductField(
+    Product product,
+    Map<String, dynamic> fields,
+  ) async {
     try {
-      // Delete the document from Firestore
-      await FirebaseFirestore.instance.collection('products').doc(id).delete();
-
-      // Remove the product from your local list
-      _products.removeWhere((p) => p.id == id);
-
-      // Notify listeners to update the UI
+      await _firestore.collection('products').doc(product.id).update(fields);
+      final index = _products.indexWhere((p) => p.id == product.id);
+      if (index != -1) {
+        final existing = _products[index];
+        _products[index] = existing.copyWith(
+          offerPrice: fields['offerPrice'] ?? existing.offerPrice,
+          hyperMarketPrice:
+              fields['hyperMarketPrice'] ?? existing.hyperMarketPrice,
+        );
+      }
       notifyListeners();
     } catch (e, stack) {
-      log("Firestore deleteProduct Error: $e");
+      log("❌ _updateProductField Error: $e");
       log(stack.toString());
-      throw Exception("Failed to delete product");
+      throw Exception("Failed to update product field");
     }
   }
 
-  /// -------------------------------
-  /// LIVE LISTEN TO CATEGORIES
-  /// -------------------------------
-  void listenCategories() {
-    _categorySub?.cancel();
-    _categorySub = _firestore.collection('categories').snapshots().listen((
-      snapshot,
-    ) {
-      _categories
-        ..clear()
-        ..addAll(snapshot.docs.map((doc) => Category.fromMap(doc.data())));
+  void updateProduct(Product updatedProduct) {
+    // Find the product in the list
+    final index = products.indexWhere((p) => p.id == updatedProduct.id);
+
+    if (index != -1) {
+      products[index] = updatedProduct; // replace with the updated product
+      notifyListeners(); // tell Flutter to rebuild the UI
+    }
+  }
+
+  // ------------------- IMAGES -------------------
+  Future<void> pickImageFromCamera({
+    int maxWidth = 400,
+    int maxHeight = 400,
+    int quality = 50,
+  }) async {
+    await _pickImage(ImageSource.camera, maxWidth, maxHeight, quality);
+  }
+
+  Future<void> pickMultipleImages({
+    int maxWidth = 400,
+    int maxHeight = 400,
+    int quality = 50,
+  }) async {
+    final picker = ImagePicker();
+    final pickedFiles = await picker.pickMultiImage(imageQuality: quality);
+
+    if (pickedFiles != null) {
+      for (var file in pickedFiles) {
+        final base64 = await _processImage(
+          File(file.path),
+          maxWidth,
+          maxHeight,
+          quality,
+        );
+        if (base64.isNotEmpty) images.add(base64);
+      }
       notifyListeners();
-    });
+    }
   }
 
   Future<String> pickImageAsBase64({
@@ -388,120 +496,50 @@ class ProductProvider extends ChangeNotifier {
   }) async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: source);
-
     if (pickedFile != null) {
-      final bytes = await File(pickedFile.path).readAsBytes();
-      final image = img.decodeImage(bytes);
-      if (image == null) return '';
-      final resized = img.copyResize(image, width: maxWidth, height: maxHeight);
-      final compressedBytes = img.encodeJpg(resized, quality: quality);
-      return base64Encode(compressedBytes);
+      return await _processImage(
+        File(pickedFile.path),
+        maxWidth,
+        maxHeight,
+        quality,
+      );
     }
     return '';
   }
 
-  Future<void> setOfferPrice(Product product, double? offerPrice) async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('products')
-          .doc(product.id)
-          .update({'offerPrice': offerPrice});
-
-      final index = _products.indexWhere((p) => p.id == product.id);
-      if (index != -1) {
-        _products[index] = Product(
-          itemCode: product.itemCode,
-          market: product.market,
-          id: product.id,
-          name: product.name,
-          price: product.price,
-          offerPrice: offerPrice, // ✅ updated field
-          unit: product.unit,
-          stock: product.stock,
-          description: product.description,
-          images: product.images,
-          categoryId: product.categoryId,
-        );
-      }
-
-      notifyListeners();
-    } catch (e, stack) {
-      log("Firestore setOfferPrice Error: $e");
-      log(stack.toString());
-      throw Exception("Failed to set offer price");
-    }
-  }
-
-  Future<void> setHyperMarketPrice(Product product, double? hyperMarketPrice) async {
-  try {
-    await FirebaseFirestore.instance
-        .collection('products')
-        .doc(product.id)
-        .update({'hyperMarketPrice': hyperMarketPrice});
-
-    final index = _products.indexWhere((p) => p.id == product.id);
-    if (index != -1) {
-      _products[index] = Product(
-        itemCode: product.itemCode,
-        market: product.market,
-        id: product.id,
-        name: product.name,
-        price: product.price,
-        offerPrice: product.offerPrice,
-        unit: product.unit,
-        stock: product.stock,
-        description: product.description,
-        images: product.images,
-        categoryId: product.categoryId,
-        hyperMarket: product.hyperMarket,
-        hyperMarketPrice: hyperMarketPrice, // ✅ update field
-      );
-    }
-
-    notifyListeners();
-    log("✅ HyperMarket price updated successfully");
-  } catch (e, stack) {
-    log("❌ Firestore setHyperMarketPrice Error: $e");
-    log(stack.toString());
-    throw Exception("Failed to set hypermarket price");
-  }
-}
-
-
-  Future<void> pickMultipleImages(BuildContext context) async {
+  Future<void> _pickImage(
+    ImageSource source, [
+    int maxWidth = 400,
+    int maxHeight = 400,
+    int quality = 50,
+  ]) async {
     final picker = ImagePicker();
-    final pickedFiles = await picker.pickMultiImage(imageQuality: 50);
-
-    if (pickedFiles != null) {
-      for (var file in pickedFiles) {
-        final bytes = await File(file.path).readAsBytes();
-        final image = img.decodeImage(bytes);
-        if (image != null) {
-          final resized = img.copyResize(image, width: 400, height: 400);
-          final compressedBytes = img.encodeJpg(resized, quality: 50);
-          images.add(base64Encode(compressedBytes));
-        }
-      }
-      notifyListeners();
-    }
-  }
-
-  Future<void> pickImageFromCamera() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 50,
-    );
+    final pickedFile = await picker.pickImage(source: source);
     if (pickedFile != null) {
-      final bytes = await File(pickedFile.path).readAsBytes();
-      final image = img.decodeImage(bytes);
-      if (image != null) {
-        final resized = img.copyResize(image, width: 400, height: 400);
-        final compressedBytes = img.encodeJpg(resized, quality: 50);
-        images.add(base64Encode(compressedBytes));
+      final base64 = await _processImage(
+        File(pickedFile.path),
+        maxWidth,
+        maxHeight,
+        quality,
+      );
+      if (base64.isNotEmpty) {
+        images.add(base64);
         notifyListeners();
       }
     }
+  }
+
+  Future<String> _processImage(
+    File file,
+    int maxWidth,
+    int maxHeight,
+    int quality,
+  ) async {
+    final bytes = await file.readAsBytes();
+    final image = img.decodeImage(bytes);
+    if (image == null) return '';
+    final resized = img.copyResize(image, width: maxWidth, height: maxHeight);
+    return base64Encode(img.encodeJpg(resized, quality: quality));
   }
 
   void addImage(String base64) {
@@ -510,93 +548,51 @@ class ProductProvider extends ChangeNotifier {
   }
 
   void removeImageAt(int index) {
-    images.removeAt(index);
-    notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    _productSub?.cancel();
-    _categorySub?.cancel();
-    super.dispose();
-  }
-
-  /// Delete all orders (or you can filter if needed)
-  Future<void> deleteAllOrders() async {
-    final collection = FirebaseFirestore.instance.collection('orders');
-
-    try {
-      // Get all orders
-      final snapshot = await collection.get();
-
-      // Batch delete
-      final batch = FirebaseFirestore.instance.batch();
-      for (var doc in snapshot.docs) {
-        batch.delete(doc.reference);
-      }
-
-      await batch.commit();
-      print("✅ All orders deleted successfully");
+    if (index >= 0 && index < images.length) {
+      images.removeAt(index);
       notifyListeners();
-    } catch (e) {
-      print("❌ Error deleting orders: $e");
     }
   }
-  Future<void> editProduct(Product oldProduct, Product newProduct) async {
-  try {
-    // Update Firestore
-    await FirebaseFirestore.instance
-        .collection('products')
-        .doc(oldProduct.id)
-        .update(newProduct.toMap());
-
-    // Update local list
-    final index = _products.indexWhere((p) => p.id == oldProduct.id);
-    if (index != -1) {
-      _products[index] = newProduct;
-    }
-
-    notifyListeners();
-    log("✅ Product updated successfully");
-  } catch (e, stack) {
-    log("❌ Firestore editProduct Error: $e");
-    log(stack.toString());
-    throw Exception("Failed to edit product");
-  }
+  void removeImage(String image) {
+  images.remove(image);
+  notifyListeners();
 }
 
-void removeImage(int index) {
-  if (index >= 0 && index < images.length) {
-    images.removeAt(index);
-    notifyListeners();
-  }
-}
 
-// In ProductProvider
-Product? _editingProduct;
-
-void loadProductForEditingOnce(Product product) {
-  if (_editingProduct?.id != product.id) {
-    // Clear previous data
+  // ------------------- FORM MANAGEMENT -------------------
+  void resetForm() {
     images.clear();
     nameController.clear();
     itemCodeController.clear();
     priceController.clear();
+    offerPriceController.clear();
     stockController.clear();
     unitController.clear();
-    hypermarketController.clear();
+    kgPriceController.clear();
+    ctnPriceController.clear();
+    pcsPriceController.clear();
     descriptionController.clear();
+    hypermarketController.clear();
+    marketController.clear();
     selectedMarket = null;
     selectedCategory = null;
+    _isFormFilled = false;
+    notifyListeners();
+  }
 
-    // Load new product
+  void loadProductForEditingOnce(Product product) {
+    if (_editingProduct?.id == product.id) return;
+
+    resetForm();
+
     _editingProduct = product;
     nameController.text = product.name;
     itemCodeController.text = product.itemCode;
     priceController.text = product.price.toString();
+    offerPriceController.text = product.offerPrice?.toString() ?? '';
     stockController.text = product.stock.toString();
     unitController.text = product.unit;
-    hypermarketController.text = product.hyperMarket?.toString() ?? "";
+    hypermarketController.text = product.hyperMarket?.toString() ?? '';
     selectedMarket = product.market;
     selectedCategory = product.categoryId;
     images = List<String>.from(product.images);
@@ -604,42 +600,59 @@ void loadProductForEditingOnce(Product product) {
 
     notifyListeners();
   }
+
+  Future<void> saveEditedProduct(Product oldProduct) async {
+    if (_editingProduct == null) return;
+
+    final newProduct = Product(
+      id: oldProduct.id,
+      name: nameController.text.trim(),
+      itemCode: itemCodeController.text.trim(),
+      price: double.tryParse(priceController.text.trim()) ?? 0,
+      offerPrice: double.tryParse(offerPriceController.text.trim()),
+      stock: int.tryParse(stockController.text.trim()) ?? 0,
+      unit: unitController.text.trim(),
+      market: selectedMarket ?? "",
+      hyperMarket: double.tryParse(hypermarketController.text.trim()) ?? 0,
+      images: List<String>.from(images),
+      categoryId: selectedCategory ?? "",
+      description: descriptionController.text.trim(),
+      kgPrice: double.tryParse(kgPriceController.text.trim()),
+      ctrPrice: double.tryParse(ctnPriceController.text.trim()),
+      pcsPrice: double.tryParse(pcsPriceController.text.trim()),
+    );
+
+    await editProduct(oldProduct, newProduct);
+
+    // Ensure local list has updated images
+final index = _products.indexWhere((p) => p.id == newProduct.id);
+if (index != -1) {
+  _products[index] = newProduct; // ✅ new images now in provider list
 }
 
 
+    resetForm();
+    _editingProduct = null;
+  }
 
-Future<void> saveEditedProduct(Product oldProduct) async {
-  final newProduct = Product(
-    id: oldProduct.id,
-    name: nameController.text.trim(),
-    itemCode: itemCodeController.text.trim(),
-    price: double.tryParse(priceController.text.trim()) ?? 0,
-    stock: int.tryParse(stockController.text.trim()) ?? 0,
-    unit: unitController.text.trim(),
-    market: selectedMarket ?? "",
-    hyperMarket: double.tryParse(hypermarketController.text.trim()) ?? 0,
-    images: images,
-    categoryId: selectedCategory ?? "",
-    description: descriptionController.text.trim(),
-  );
-
-  await editProduct(oldProduct, newProduct);
-
-
-    // Clear editing state
-  _editingProduct = null;
-  images.clear();
-  nameController.clear();
-  itemCodeController.clear();
-  priceController.clear();
-  stockController.clear();
-  unitController.clear();
-  hypermarketController.clear();
-  descriptionController.clear();
-  selectedMarket = null;
-  selectedCategory = null;
-
-}
-
-
+  // ------------------- CLEANUP -------------------
+  @override
+  void dispose() {
+    _productSub?.cancel();
+    _ordersSub?.cancel();
+    _categorySub?.cancel();
+    nameController.dispose();
+    itemCodeController.dispose();
+    priceController.dispose();
+    offerPriceController.dispose();
+    stockController.dispose();
+    unitController.dispose();
+    kgPriceController.dispose();
+    ctnPriceController.dispose();
+    pcsPriceController.dispose();
+    descriptionController.dispose();
+    hypermarketController.dispose();
+    marketController.dispose();
+    super.dispose();
+  }
 }

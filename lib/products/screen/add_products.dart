@@ -480,11 +480,23 @@ class AddProducts extends StatelessWidget {
                     final categoryId = productProvider.selectedCategory ?? '';
                     final images = productProvider.images; // base64 list
 
-                    final kgPrice = double.tryParse(productProvider.kgPriceController.text) ?? 0;
-                        
-                    final ctnPrice = double.tryParse(productProvider.ctnPriceController.text) ?? 0;
-                        
-                    final pcsPrice = double.tryParse(productProvider.pcsPriceController.text) ?? 0;
+                    final kgPrice =
+                        double.tryParse(
+                          productProvider.kgPriceController.text,
+                        ) ??
+                        0;
+
+                    final ctnPrice =
+                        double.tryParse(
+                          productProvider.ctnPriceController.text,
+                        ) ??
+                        0;
+
+                    final pcsPrice =
+                        double.tryParse(
+                          productProvider.pcsPriceController.text,
+                        ) ??
+                        0;
                     if (name.isEmpty || unit.isEmpty || categoryId.isEmpty) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -508,7 +520,7 @@ class AddProducts extends StatelessWidget {
                       hyperMarket: hyperPrice,
                       pcsPrice: pcsPrice,
                       kgPrice: kgPrice,
-                      ctrPrice: ctnPrice
+                      ctrPrice: ctnPrice,
                     );
 
                     productProvider.addProduct(product);
@@ -584,7 +596,7 @@ class AddProducts extends StatelessWidget {
                   ),
                   InkWell(
                     onTap: () {
-                      productProvider.pickMultipleImages(context);
+                      productProvider.pickMultipleImages();
                     },
                     child: Container(
                       height: 40,
@@ -633,7 +645,40 @@ class AddProducts extends StatelessWidget {
               )
             : ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Image.memory(base64Decode(image), fit: BoxFit.cover),
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(
+                        base64Decode(image),
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                      ),
+                    ),
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: InkWell(
+                        onTap: () {
+                          productProvider.removeImage(image);
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          padding: const EdgeInsets.all(4),
+                          child: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
       ),
     );

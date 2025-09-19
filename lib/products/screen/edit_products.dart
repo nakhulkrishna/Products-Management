@@ -365,7 +365,7 @@ class EditProducts extends StatelessWidget {
 
                     // ✅ Save updated product instead of old one
                     await productProvider.saveEditedProduct(editedProduct);
-
+               
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text("Product Edited Successfully"),
@@ -427,8 +427,7 @@ class EditProducts extends StatelessWidget {
                         ),
                       ),
                       InkWell(
-                        onTap: () =>
-                            productProvider.pickMultipleImages(context),
+                        onTap: () => productProvider.pickMultipleImages(),
                         child: Container(
                           height: 40,
                           width: double.infinity,
@@ -479,7 +478,7 @@ class EditProducts extends StatelessWidget {
             right: 4,
             child: InkWell(
               onTap: () {
-                productProvider.removeImage(index); // call remove function
+                productProvider.removeImageAt(index); // call remove function
               },
               child: Container(
                 decoration: BoxDecoration(

@@ -69,7 +69,7 @@ class ProductsManagement extends StatelessWidget {
                               onChanged: (value) {
                                 context
                                     .read<ProductProvider>()
-                                    .updateSearchQuery(value);
+                                    .setCategory(value);
                               },
                             ),
                           ),
