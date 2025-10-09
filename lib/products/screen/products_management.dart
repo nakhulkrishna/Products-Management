@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
@@ -67,9 +68,10 @@ class ProductsManagement extends StatelessWidget {
                                     .none, // removes the default underline
                               ),
                               onChanged: (value) {
-                                context
-                                    .read<ProductProvider>()
-                                    .setCategory(value);
+                                log(value);
+                                context.read<ProductProvider>().setSearchQuery(
+                                  value,
+                                );
                               },
                             ),
                           ),
@@ -205,10 +207,11 @@ class ProductsManagement extends StatelessWidget {
                     physics: NeverScrollableScrollPhysics(),
                     itemCount: products.length,
                     itemBuilder: (context, index) {
-                      final products = value.products[index];
+                      final products = value.filteredProducts[index];
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         child: GestureDetector(
+                          key: ValueKey(products.id),
                           onLongPress: () =>
                               _showProductOptions(context, products),
                           child: Column(
@@ -247,18 +250,25 @@ class ProductsManagement extends StatelessWidget {
                                             (products.images == null ||
                                                 products.images.isEmpty ||
                                                 products.images.first.isEmpty)
-                                            ? const Icon(Iconsax.image)
+                                            ? const Icon(
+                                                Iconsax.image,
+                                                size: 60,
+                                              ) // fixed size icon
                                             : ClipRRect(
                                                 borderRadius:
                                                     BorderRadius.circular(12),
-                                                child: Image.memory(
-                                                  base64Decode(
+                                                child: SizedBox(
+                                                  width: 100, // fixed width
+                                                  height: 100, // fixed height
+                                                  child: Image.network(
                                                     products.images.first,
+                                                    fit: BoxFit
+                                                        .cover, // fills the box
                                                   ),
-                                                  fit: BoxFit.cover,
                                                 ),
                                               ),
                                       ),
+
                                       SizedBox(width: 10),
                                       Expanded(
                                         child: Column(
@@ -277,11 +287,32 @@ class ProductsManagement extends StatelessWidget {
                                                     fontWeight: FontWeight.bold,
                                                   ),
                                             ),
-                                        
-                                            Text(
-                                              products.categoryId,
-                                              style: theme.textTheme.bodyMedium,
+
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  products.categoryId,
+                                                  style: theme
+                                                      .textTheme
+                                                      .bodyMedium,
+                                                ),
+                                                Spacer(),
+                                                Text(
+                                                  products.isHidden
+                                                      ? "Hidded"
+                                                      : "Visible",
+                                                  style: theme
+                                                      .textTheme
+                                                      .bodyMedium!
+                                                      .copyWith(
+                                                        color: products.isHidden
+                                                            ? Colors.red
+                                                            : Colors.green,
+                                                      ),
+                                                ),
+                                              ],
                                             ),
+
                                             // Text(
                                             //   products.market,
                                             //   style: theme.textTheme.bodyMedium,
@@ -322,7 +353,7 @@ class ProductsManagement extends StatelessWidget {
                                                                       ?.toString() ??
                                                                   "",
                                                             );
-                                        
+
                                                         return Padding(
                                                           padding: EdgeInsets.only(
                                                             left: 16,
@@ -338,19 +369,17 @@ class ProductsManagement extends StatelessWidget {
                                                           ),
                                                           child: Column(
                                                             mainAxisSize:
-                                                                MainAxisSize.min,
+                                                                MainAxisSize
+                                                                    .min,
                                                             crossAxisAlignment:
                                                                 CrossAxisAlignment
                                                                     .start,
                                                             children: [
                                                               Text(
                                                                 "Set Offer Prices",
-                                                                style:
-                                                                    Theme.of(
-                                                                          context,
-                                                                        )
-                                                                        .textTheme
-                                                                        .headlineSmall,
+                                                                style: Theme.of(
+                                                                  context,
+                                                                ).textTheme.headlineSmall,
                                                               ),
                                                               SizedBox(
                                                                 height: 15,
@@ -410,16 +439,15 @@ class ProductsManagement extends StatelessWidget {
                                                                           hypermarketPriceController
                                                                               .text,
                                                                         );
-                                        
+
                                                                     if (offerPrice !=
                                                                             null ||
                                                                         hyperPrice !=
                                                                             null) {
-                                                                      final provider =
-                                                                          context
-                                                                              .read<
-                                                                                ProductProvider
-                                                                              >();
+                                                                      final provider = context
+                                                                          .read<
+                                                                            ProductProvider
+                                                                          >();
                                                                       if (offerPrice !=
                                                                           null) {
                                                                         provider.setOfferPrice(
@@ -461,10 +489,12 @@ class ProductsManagement extends StatelessWidget {
                                                             .textTheme
                                                             .bodySmall
                                                             ?.copyWith(
-                                                              color: Colors.green,
+                                                              color:
+                                                                  Colors.green,
                                                               fontSize: 15,
                                                               fontWeight:
-                                                                  FontWeight.bold,
+                                                                  FontWeight
+                                                                      .bold,
                                                             ),
                                                       ),
                                                       SizedBox(width: 10),
@@ -480,13 +510,14 @@ class ProductsManagement extends StatelessWidget {
                                                               color: Colors.red,
                                                               fontSize: 15,
                                                               fontWeight:
-                                                                  FontWeight.bold,
+                                                                  FontWeight
+                                                                      .bold,
                                                             ),
                                                       ),
                                                     ],
                                                   ),
                                                 ),
-                                        
+
                                                 // SizedBox(width: 10),
                                                 // Text(
                                                 //   products.offerPrice == null
@@ -539,9 +570,7 @@ class ProductsManagement extends StatelessWidget {
                 title: Text("Edit"),
                 onTap: () {
                   Navigator.pop(context); // close bottom sheet
-                
-                  final productProvider = context.read<ProductProvider>();
-                
+
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -557,6 +586,37 @@ class ProductsManagement extends StatelessWidget {
                   Navigator.pop(context); // close bottom sheet
                   // Delete product
                   context.read<ProductProvider>().deleteProduct(product.id);
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  product.isHidden
+                      ? Icons.visibility_off
+                      : Icons.remove_red_eye,
+                  color: product.isHidden ? Colors.red : Colors.grey,
+                ),
+                title: Text(product.isHidden ? "Unhide" : "Hide"),
+                onTap: () async {
+                  Navigator.pop(context); // close bottom sheet
+
+                  final provider = context.read<ProductProvider>();
+
+                  // toggle hide/unhide using your new method
+                  await provider.toggleProductVisibility(
+                    product.id,
+                    !product.isHidden,
+                  );
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        product.isHidden
+                            ? "Product is now visible"
+                            : "Product is now hidden",
+                      ),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
                 },
               ),
             ],
@@ -592,11 +652,14 @@ class ImagePreviewPage extends StatelessWidget {
         itemCount: images.length,
         itemBuilder: (context, index) {
           return InteractiveViewer(
+            clipBehavior: Clip
+                .none, // allows the image to go outside bounds while zooming
+            minScale: 1.0, // normal size
+            maxScale: 4.0, // 4x zoom
+            panEnabled: true, // allow moving image around
+            scaleEnabled: true, // allow pinch zoom
             child: Center(
-              child: Image.memory(
-                base64Decode(images[index]),
-                fit: BoxFit.contain,
-              ),
+              child: Image.network(images[index], fit: BoxFit.contain),
             ),
           );
         },

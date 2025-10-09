@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:developer';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
@@ -18,6 +19,7 @@ class AddProducts extends StatelessWidget {
     final productProvider = Provider.of<ProductProvider>(context);
     final theme = Theme.of(context);
     const List<String> markets = ["Hyper Market", "Local Market"];
+    bool isLoading = false;
     return Scaffold(
       appBar: AppBar(
         title: const Text("Add Products"),
@@ -44,7 +46,7 @@ class AddProducts extends StatelessWidget {
                     itemBuilder: (context, index) {
                       if (value.images.isEmpty) {
                         // show default empty card
-                        return buildStatCard(context, productProvider, "");
+                        return buildStatCard(context, productProvider, null);
                       } else {
                         // show image card
                         return buildStatCard(
@@ -445,100 +447,137 @@ class AddProducts extends StatelessWidget {
               ),
 
               SizedBox(height: 16),
+
+              // Add this inside your build method, above Scaffold
               SizedBox(
                 width: double.infinity,
                 height: 50,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade700,
-                  ),
-                  onPressed: () async {
-                    final hyperPrice =
-                        double.tryParse(
-                          productProvider.hypermarketController.text.trim(),
-                        ) ??
-                        0;
-                    final name = productProvider.nameController.text.trim();
-                    final itemcode = productProvider.itemCodeController.text
-                        .trim();
-                    final price =
-                        double.tryParse(
-                          productProvider.priceController.text.trim(),
-                        ) ??
-                        0;
-                    final stock =
-                        int.tryParse(
-                          productProvider.stockController.text.trim(),
-                        ) ??
-                        0;
-                    final unit = productProvider.unitController.text.trim();
-                    final market = productProvider.selectedMarket ?? "";
-                    final description = productProvider
-                        .descriptionController
-                        .text
-                        .trim();
-                    final categoryId = productProvider.selectedCategory ?? '';
-                    final images = productProvider.images; // base64 list
-
-                    final kgPrice =
-                        double.tryParse(
-                          productProvider.kgPriceController.text,
-                        ) ??
-                        0;
-
-                    final ctnPrice =
-                        double.tryParse(
-                          productProvider.ctnPriceController.text,
-                        ) ??
-                        0;
-
-                    final pcsPrice =
-                        double.tryParse(
-                          productProvider.pcsPriceController.text,
-                        ) ??
-                        0;
-                    if (name.isEmpty || unit.isEmpty || categoryId.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Please fill all required fields'),
-                        ),
-                      );
-                      return;
-                    }
-
-                    final product = Product(
-                      itemCode: itemcode,
-                      market: market,
-                      id: DateTime.now().microsecondsSinceEpoch.toString(),
-                      name: name,
-                      price: price,
-                      unit: unit,
-                      stock: stock,
-                      description: description,
-                      images: images,
-                      categoryId: categoryId,
-                      hyperMarket: hyperPrice,
-                      pcsPrice: pcsPrice,
-                      kgPrice: kgPrice,
-                      ctrPrice: ctnPrice,
-                    );
-
-                    productProvider.addProduct(product);
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Product Added Successfully'),
+                child: StatefulBuilder(
+                  builder: (context, setState) {
+                    return ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green.shade700,
                       ),
+                      onPressed: isLoading
+                          ? null
+                          : () async {
+                              setState(() => isLoading = true);
+
+                              final hyperPrice =
+                                  double.tryParse(
+                                    productProvider.hypermarketController.text
+                                        .trim(),
+                                  ) ??
+                                  0;
+                              final name = productProvider.nameController.text
+                                  .trim();
+                              final itemcode = productProvider
+                                  .itemCodeController
+                                  .text
+                                  .trim();
+                              final price =
+                                  double.tryParse(
+                                    productProvider.priceController.text.trim(),
+                                  ) ??
+                                  0;
+                              final stock =
+                                  int.tryParse(
+                                    productProvider.stockController.text.trim(),
+                                  ) ??
+                                  0;
+                              final unit = productProvider.unitController.text
+                                  .trim();
+                              final market =
+                                  productProvider.selectedMarket ?? "";
+                              final description = productProvider
+                                  .descriptionController
+                                  .text
+                                  .trim();
+                              final categoryId =
+                                  productProvider.selectedCategory ?? '';
+                              final images =
+                                  productProvider.images; // base64 / File list
+
+                              final kgPrice =
+                                  double.tryParse(
+                                    productProvider.kgPriceController.text,
+                                  ) ??
+                                  0;
+                              final ctnPrice =
+                                  double.tryParse(
+                                    productProvider.ctnPriceController.text,
+                                  ) ??
+                                  0;
+                              final pcsPrice =
+                                  double.tryParse(
+                                    productProvider.pcsPriceController.text,
+                                  ) ??
+                                  0;
+
+                              if (name.isEmpty ||
+                                  unit.isEmpty ||
+                                  categoryId.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Please fill all required fields',
+                                    ),
+                                  ),
+                                );
+                                setState(() => isLoading = false);
+                                return;
+                              }
+
+                              final product = Product(
+                                images: [],
+                                itemCode: itemcode,
+                                market: market,
+                                id: DateTime.now().microsecondsSinceEpoch
+                                    .toString(),
+                                name: name,
+                                price: price,
+                                unit: unit,
+                                stock: stock,
+                                description: description,
+                                categoryId: categoryId,
+                                hyperMarket: hyperPrice,
+                                pcsPrice: pcsPrice,
+                                kgPrice: kgPrice,
+                                ctrPrice: ctnPrice,
+                              );
+
+                              try {
+                                await productProvider.addProduct(
+                                  product,
+                                  images,
+                                );
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Product Added Successfully'),
+                                  ),
+                                );
+
+                                productProvider.resetForm();
+                                Navigator.pop(context);
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to add product: $e'),
+                                  ),
+                                );
+                              } finally {
+                                setState(() => isLoading = false);
+                              }
+                            },
+                      child: isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text(
+                              "Add Product",
+                              style: TextStyle(fontSize: 18),
+                            ),
                     );
-
-                    productProvider.resetForm();
-                    Navigator.pop(context);
                   },
-
-                  child: const Text(
-                    "Add Product",
-                    style: TextStyle(fontSize: 18),
-                  ),
                 ),
               ),
               SizedBox(height: 40),
@@ -552,7 +591,7 @@ class AddProducts extends StatelessWidget {
   Widget buildStatCard(
     BuildContext context,
     ProductProvider productProvider,
-    String image,
+    File? image,
   ) {
     final theme = Theme.of(context);
 
@@ -629,7 +668,7 @@ class AddProducts extends StatelessWidget {
           color: theme.cardColor,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: image.isEmpty
+        child: image == null
             ? Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -649,12 +688,7 @@ class AddProducts extends StatelessWidget {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.memory(
-                        base64Decode(image),
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                      ),
+                      child: Image.file(image),
                     ),
                     Positioned(
                       top: 4,

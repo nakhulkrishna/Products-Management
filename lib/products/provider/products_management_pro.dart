@@ -5,6 +5,7 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 
@@ -100,6 +101,7 @@ class Product {
   double? kgPrice;
   double? ctrPrice;
   double? pcsPrice;
+  bool isHidden;
 
   Product({
     required this.itemCode,
@@ -118,6 +120,7 @@ class Product {
     this.kgPrice,
     this.ctrPrice,
     this.pcsPrice,
+    this.isHidden = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -138,6 +141,7 @@ class Product {
       'kgPrice': kgPrice,
       'ctrPrice': ctrPrice,
       'pcsPrice': pcsPrice,
+      'isHidden': isHidden,
     };
   }
 
@@ -174,6 +178,9 @@ class Product {
       kgPrice: parseDouble(map['kgPrice']),
       ctrPrice: parseDouble(map['ctrPrice']),
       pcsPrice: parseDouble(map['pcsPrice']),
+      isHidden: (map['isHidden'] != null && map['isHidden'] is bool)
+          ? map['isHidden'] as bool
+          : false,
     );
   }
   Product copyWith({
@@ -193,6 +200,7 @@ class Product {
     double? kgPrice,
     double? ctrPrice,
     double? pcsPrice,
+    bool? isHidden, // ✅ new field
   }) {
     return Product(
       id: id ?? this.id,
@@ -211,6 +219,7 @@ class Product {
       kgPrice: kgPrice ?? this.kgPrice,
       ctrPrice: ctrPrice ?? this.ctrPrice,
       pcsPrice: pcsPrice ?? this.pcsPrice,
+      isHidden: isHidden ?? this.isHidden, // ✅ updated copy
     );
   }
 }
@@ -222,7 +231,8 @@ class ProductProvider extends ChangeNotifier {
   final List<Product> _products = [];
   final List<Order> _orders = [];
   final List<Category> _categories = [];
-  List<String> images = [];
+  List<dynamic> images = [];
+
   Product? _editingProduct;
 
   // Form Controllers
@@ -285,20 +295,53 @@ class ProductProvider extends ChangeNotifier {
     _productSub = _firestore.collection('products').snapshots().listen((
       snapshot,
     ) {
-      _products
-        ..clear()
-        ..addAll(snapshot.docs.map((doc) => Product.fromMap(doc.data())));
-      notifyListeners();
+      bool hasChanged = false;
+
+      for (final change in snapshot.docChanges) {
+        final data = change.doc.data();
+        if (data == null) continue;
+
+        final product = Product.fromMap(data);
+
+        switch (change.type) {
+          case DocumentChangeType.added:
+            _products.add(product);
+            hasChanged = true;
+            break;
+          case DocumentChangeType.modified:
+            final index = _products.indexWhere((p) => p.id == product.id);
+            if (index != -1) {
+              _products[index] = product;
+              hasChanged = true;
+            }
+            break;
+          case DocumentChangeType.removed:
+            _products.removeWhere((p) => p.id == product.id);
+            hasChanged = true;
+            break;
+        }
+      }
+
+      if (hasChanged) notifyListeners(); // ✅ only rebuild if something changed
     }, onError: (error) => log('❌ listenProducts error: $error'));
   }
 
-  Future<void> addProduct(Product product) async {
+  Future<void> addProduct(Product product, List<dynamic> images) async {
     try {
+      // 1️⃣ Upload images to Cloudinary
+      final imageUrls = await uploadMultipleImagesToCloudinary(images);
+
+      // 2️⃣ Create a new product with uploaded image URLs
+      final newProduct = product.copyWith(images: imageUrls);
+
+      // 3️⃣ Save to Firestore
       await _firestore
           .collection('products')
-          .doc(product.id)
-          .set(product.toMap());
+          .doc(newProduct.id)
+          .set(newProduct.toMap());
+
       notifyListeners();
+      log("✅ Product added successfully with Cloudinary images");
     } catch (e, stack) {
       log("❌ addProduct Error: $e");
       log(stack.toString());
@@ -324,7 +367,7 @@ class ProductProvider extends ChangeNotifier {
       }
 
       // ✅ Notify listeners to update the UI immediately
-    
+
       notifyListeners();
       log("✅ Product updated successfully");
     } catch (e, stack) {
@@ -343,6 +386,30 @@ class ProductProvider extends ChangeNotifier {
       log("❌ deleteProduct Error: $e");
       log(stack.toString());
       throw Exception("Failed to delete product");
+    }
+  }
+
+  Future<void> toggleProductVisibility(String id, bool hide) async {
+    try {
+      await _firestore.collection('products').doc(id).set(
+        {
+          'isHidden': hide,
+          'updatedAt': FieldValue.serverTimestamp(), // optional
+        },
+        SetOptions(merge: true), // ✅ only updates the given fields
+      );
+
+      // update locally if you have the product in memory
+      final index = _products.indexWhere((p) => p.id == id);
+      if (index != -1) {
+        _products[index] = _products[index].copyWith(isHidden: hide);
+      }
+
+      notifyListeners();
+    } catch (e, stack) {
+      log("❌ toggleProductVisibility Error: $e");
+      log(stack.toString());
+      throw Exception("Failed to update product visibility");
     }
   }
 
@@ -458,106 +525,50 @@ class ProductProvider extends ChangeNotifier {
   }
 
   // ------------------- IMAGES -------------------
-  Future<void> pickImageFromCamera({
-    int maxWidth = 400,
-    int maxHeight = 400,
-    int quality = 50,
-  }) async {
-    await _pickImage(ImageSource.camera, maxWidth, maxHeight, quality);
+  Future<void> pickImageFromCamera() async {
+    await _pickImage(ImageSource.camera);
   }
 
-  Future<void> pickMultipleImages({
-    int maxWidth = 400,
-    int maxHeight = 400,
-    int quality = 50,
-  }) async {
+  Future<void> pickMultipleImages() async {
     final picker = ImagePicker();
-    final pickedFiles = await picker.pickMultiImage(imageQuality: quality);
+    final pickedFiles = await picker.pickMultiImage();
 
     if (pickedFiles != null) {
-      for (var file in pickedFiles) {
-        final base64 = await _processImage(
-          File(file.path),
-          maxWidth,
-          maxHeight,
-          quality,
-        );
-        if (base64.isNotEmpty) images.add(base64);
+      for (var xfile in pickedFiles) {
+        final file = File(xfile.path);
+        images.add(file);
       }
       notifyListeners();
     }
   }
 
-  Future<String> pickImageAsBase64({
-    ImageSource source = ImageSource.gallery,
-    int maxWidth = 400,
-    int maxHeight = 400,
-    int quality = 50,
-  }) async {
+  Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: source);
     if (pickedFile != null) {
-      return await _processImage(
-        File(pickedFile.path),
-        maxWidth,
-        maxHeight,
-        quality,
-      );
-    }
-    return '';
-  }
+      final file = File(pickedFile.path);
+      images.add(file);
 
-  Future<void> _pickImage(
-    ImageSource source, [
-    int maxWidth = 400,
-    int maxHeight = 400,
-    int quality = 50,
-  ]) async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: source);
-    if (pickedFile != null) {
-      final base64 = await _processImage(
-        File(pickedFile.path),
-        maxWidth,
-        maxHeight,
-        quality,
-      );
-      if (base64.isNotEmpty) {
-        images.add(base64);
-        notifyListeners();
-      }
+      notifyListeners();
     }
   }
 
-  Future<String> _processImage(
-    File file,
-    int maxWidth,
-    int maxHeight,
-    int quality,
-  ) async {
-    final bytes = await file.readAsBytes();
-    final image = img.decodeImage(bytes);
-    if (image == null) return '';
-    final resized = img.copyResize(image, width: maxWidth, height: maxHeight);
-    return base64Encode(img.encodeJpg(resized, quality: quality));
-  }
-
-  void addImage(String base64) {
+  void addImage(File base64) {
     images.add(base64);
     notifyListeners();
   }
 
-  void removeImageAt(int index) {
-    if (index >= 0 && index < images.length) {
-      images.removeAt(index);
-      notifyListeners();
-    }
-  }
-  void removeImage(String image) {
-  images.remove(image);
-  notifyListeners();
-}
+  void removeImageAt(int index, Product product) {
+    if (index < 0 || index >= images.length) return;
 
+    images.removeAt(index);
+    notifyListeners();
+  }
+
+  void removeImage(File image) {
+    images.remove(image);
+    notifyListeners();
+  }
 
   // ------------------- FORM MANAGEMENT -------------------
   void resetForm() {
@@ -595,45 +606,69 @@ class ProductProvider extends ChangeNotifier {
     hypermarketController.text = product.hyperMarket?.toString() ?? '';
     selectedMarket = product.market;
     selectedCategory = product.categoryId;
-    images = List<String>.from(product.images);
     descriptionController.text = product.description;
+    kgPriceController.text = product.kgPrice?.toString() ?? '';
+    ctnPriceController.text = product.ctrPrice?.toString() ?? '';
+    pcsPriceController.text = product.pcsPrice?.toString() ?? '';
+
+    // ✅ Only store existing image URLs
+    images = List<dynamic>.from(product.images);
 
     notifyListeners();
   }
 
-  Future<void> saveEditedProduct(Product oldProduct) async {
-    if (_editingProduct == null) return;
+  Future<void> saveEditedProductDirect(Product updatedProduct) async {
+    // Separate images
+    final List<File> newImages = images.whereType<File>().toList();
+    final List<String> existingUrls = images.whereType<String>().toList();
 
-    final newProduct = Product(
-      id: oldProduct.id,
-      name: nameController.text.trim(),
-      itemCode: itemCodeController.text.trim(),
-      price: double.tryParse(priceController.text.trim()) ?? 0,
-      offerPrice: double.tryParse(offerPriceController.text.trim()),
-      stock: int.tryParse(stockController.text.trim()) ?? 0,
-      unit: unitController.text.trim(),
-      market: selectedMarket ?? "",
-      hyperMarket: double.tryParse(hypermarketController.text.trim()) ?? 0,
-      images: List<String>.from(images),
-      categoryId: selectedCategory ?? "",
-      description: descriptionController.text.trim(),
-      kgPrice: double.tryParse(kgPriceController.text.trim()),
-      ctrPrice: double.tryParse(ctnPriceController.text.trim()),
-      pcsPrice: double.tryParse(pcsPriceController.text.trim()),
-    );
+    List<String> finalImageUrls = existingUrls;
 
-    await editProduct(oldProduct, newProduct);
+    if (newImages.isNotEmpty) {
+      final uploadedUrls = await uploadMultipleImagesToCloudinary(newImages);
+      finalImageUrls = [...existingUrls, ...uploadedUrls];
+    }
 
-    // Ensure local list has updated images
-final index = _products.indexWhere((p) => p.id == newProduct.id);
-if (index != -1) {
-  _products[index] = newProduct; // ✅ new images now in provider list
-}
+    final productToSave = updatedProduct.copyWith(images: finalImageUrls);
 
+    await editProduct(updatedProduct, productToSave);
 
     resetForm();
     _editingProduct = null;
   }
+
+  //   Future<void> saveEditedProduct(Product oldProduct) async {
+  //     if (_editingProduct == null) return;
+
+  //     final newProduct = Product(
+  //       id: oldProduct.id,
+  //       name: nameController.text.trim(),
+  //       itemCode: itemCodeController.text.trim(),
+  //       price: double.tryParse(priceController.text.trim()) ?? 0,
+  //       offerPrice: double.tryParse(offerPriceController.text.trim()),
+  //       stock: int.tryParse(stockController.text.trim()) ?? 0,
+  //       unit: unitController.text.trim(),
+  //       market: selectedMarket ?? "",
+  //       hyperMarket: double.tryParse(hypermarketController.text.trim()) ?? 0,
+  //       images: List<String>.from(images),
+  //       categoryId: selectedCategory ?? "",
+  //       description: descriptionController.text.trim(),
+  //       kgPrice: double.tryParse(kgPriceController.text.trim()),
+  //       ctrPrice: double.tryParse(ctnPriceController.text.trim()),
+  //       pcsPrice: double.tryParse(pcsPriceController.text.trim()),
+  //     );
+
+  //     await editProduct(oldProduct, newProduct);
+
+  //     // Ensure local list has updated images
+  //     final index = _products.indexWhere((p) => p.id == newProduct.id);
+  //     if (index != -1) {
+  //       _products[index] = newProduct; // ✅ new images now in provider list
+  //     }
+
+  //     resetForm();
+  //     _editingProduct = null;
+  //   }
 
   // ------------------- CLEANUP -------------------
   @override
@@ -654,5 +689,47 @@ if (index != -1) {
     hypermarketController.dispose();
     marketController.dispose();
     super.dispose();
+  }
+
+  Future<List<String>> uploadMultipleImagesToCloudinary(
+    List<dynamic> imageFiles,
+  ) async {
+    log(imageFiles.length.toString());
+    final List<String> uploadedUrls = [];
+
+    for (final imageFile in imageFiles) {
+      final imageUrl = await uploadImageToCloudinary(imageFile);
+      if (imageUrl != null) {
+        uploadedUrls.add(imageUrl);
+      } else {
+        print('⚠️ Failed to upload one image');
+      }
+    }
+
+    return uploadedUrls;
+  }
+
+  Future<String?> uploadImageToCloudinary(File imageFile) async {
+    const cloudName = 'dmqmff4g4';
+    const uploadPreset = 'red_rose_contracting_w.l.l';
+
+    final url = Uri.parse(
+      'https://api.cloudinary.com/v1_1/$cloudName/image/upload',
+    );
+
+    final request = http.MultipartRequest('POST', url)
+      ..fields['upload_preset'] = uploadPreset
+      ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+
+    final response = await request.send();
+
+    if (response.statusCode == 200) {
+      final responseData = await response.stream.bytesToString();
+      final decoded = json.decode(responseData);
+      return decoded['secure_url']; // ✅ return image URL
+    } else {
+      print('❌ Upload failed: ${response.statusCode}');
+      return null;
+    }
   }
 }

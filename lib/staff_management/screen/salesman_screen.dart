@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
@@ -10,7 +12,7 @@ class SalesmanScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-     final theme = Theme.of(context);
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text("Salesmen"),
@@ -32,7 +34,7 @@ class SalesmanScreen extends StatelessWidget {
           builder: (context, staffProvider, child) {
             final salesmen =
                 staffProvider.staffList; // Assuming this is a list of salesmen
-                // If there are no salesmen, show a centered image with text
+            // If there are no salesmen, show a centered image with text
             if (salesmen.isEmpty) {
               return Center(
                 child: Column(
@@ -104,7 +106,7 @@ class SalesmanScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  name,
+                  id,
                   style: theme.textTheme.bodyLarge?.copyWith(
                     fontWeight: FontWeight.w600,
                     fontSize: 16,
@@ -116,6 +118,7 @@ class SalesmanScreen extends StatelessWidget {
           ),
           IconButton(
             onPressed: () {
+              log(id);
               provider.deleteStaff(id);
             },
             icon: Icon(Iconsax.trash, color: Colors.red),

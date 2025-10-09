@@ -36,6 +36,7 @@ dependencies:
   firebase_core: ^4.0.0
   flutter:
     sdk: flutter
+  http: ^1.5.0
   iconsax: ^0.0.8
   image: ^4.5.4
   image_picker: ^1.2.0
