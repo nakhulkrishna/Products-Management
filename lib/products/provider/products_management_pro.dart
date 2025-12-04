@@ -2,25 +2,25 @@ import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
 import 'dart:convert';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 
+// ==================== MODELS ====================
 class Category {
-  String id;
-  String name;
+  final String id;
+  final String name;
 
   Category({required this.id, required this.name});
 
-  Map<String, dynamic> toMap() {
-    return {"id": id, "name": name};
-  }
+  Map<String, dynamic> toMap() => {"id": id, "name": name};
 
   factory Category.fromMap(Map<String, dynamic> map) {
-    return Category(id: map["id"] ?? "", name: map["name"] ?? "");
+    return Category(
+      id: map["id"] ?? "",
+      name: map["name"] ?? "",
+    );
   }
 }
 
@@ -33,8 +33,8 @@ class Order {
   final int quantity;
   final double total;
   final DateTime? timestamp;
-  final String color; // new field
-  final String buyer; // new field
+  final String color;
+  final String buyer;
 
   Order({
     required this.orderId,
@@ -49,7 +49,6 @@ class Order {
     required this.buyer,
   });
 
-  // Convert Firestore document -> Order model
   factory Order.fromMap(Map<String, dynamic> map) {
     return Order(
       orderId: map['orderId'] ?? "",
@@ -62,12 +61,11 @@ class Order {
       timestamp: map['timestamp'] != null
           ? (map['timestamp'] as Timestamp).toDate()
           : null,
-      color: map['color'] ?? '', // new field mapping
-      buyer: map['buyer'] ?? '', // new field mapping
+      color: map['color'] ?? '',
+      buyer: map['buyer'] ?? '',
     );
   }
 
-  // Convert Order model -> Firestore document
   Map<String, dynamic> toMap() {
     return {
       'orderId': orderId,
@@ -78,30 +76,30 @@ class Order {
       'quantity': quantity,
       'total': total,
       'timestamp': timestamp != null ? Timestamp.fromDate(timestamp!) : null,
-      'color': color, // new field
-      'buyer': buyer, // new field
+      'color': color,
+      'buyer': buyer,
     };
   }
 }
 
 class Product {
-  String id;
-  String name;
-  double price; // original price
-  double? offerPrice; // ✅ optional offer price
-  String unit;
-  int stock;
-  String description;
-  List<String> images;
-  String categoryId;
-  double? hyperMarket; // ✅ maybe used as hyper price reference
-  String market;
-  String itemCode;
-  double? hyperMarketPrice; // ✅ actual Hyper Market offer price
-  double? kgPrice;
-  double? ctrPrice;
-  double? pcsPrice;
-  bool isHidden;
+  final String id;
+  final String name;
+  final double price;
+  final double? offerPrice;
+  final String unit;
+  final int stock;
+  final String description;
+  final List<String> images;
+  final String categoryId;
+  final double? hyperMarket;
+  final String market;
+  final String itemCode;
+  final double? hyperMarketPrice;
+  final double? kgPrice;
+  final double? ctrPrice;
+  final double? pcsPrice;
+  final bool isHidden;
 
   Product({
     required this.itemCode,
@@ -127,7 +125,7 @@ class Product {
     return {
       'itemCode': itemCode,
       'market': market,
-      'hyperPrice': hyperMarket, // keep key consistent
+      'hyperPrice': hyperMarket,
       'id': id,
       'name': name,
       'price': price,
@@ -146,43 +144,42 @@ class Product {
   }
 
   factory Product.fromMap(Map<String, dynamic> map) {
-    double? parseDouble(dynamic value) {
-      if (value == null) return null;
-      if (value is num) return value.toDouble();
-      if (value is String) return double.tryParse(value);
-      return null;
-    }
-
-    int parseInt(dynamic value) {
-      if (value == null) return 0;
-      if (value is int) return value;
-      if (value is String) return int.tryParse(value) ?? 0;
-      if (value is double) return value.toInt();
-      return 0;
-    }
-
     return Product(
       itemCode: map['itemCode'] ?? "",
       market: map['market'] ?? "",
-      hyperMarket: parseDouble(map['hyperPrice']),
-      hyperMarketPrice: parseDouble(map['hyperMarketPrice']),
+      hyperMarket: _parseDouble(map['hyperPrice']),
+      hyperMarketPrice: _parseDouble(map['hyperMarketPrice']),
       id: map['id'] ?? '',
       name: map['name'] ?? '',
-      price: parseDouble(map['price']) ?? 0.0,
-      offerPrice: parseDouble(map['offerPrice']),
+      price: _parseDouble(map['price']) ?? 0.0,
+      offerPrice: _parseDouble(map['offerPrice']),
       unit: map['unit'] ?? '',
-      stock: parseInt(map['stock']),
+      stock: _parseInt(map['stock']),
       description: map['description'] ?? '',
       images: List<String>.from(map['images'] ?? []),
       categoryId: map['categoryId'] ?? '',
-      kgPrice: parseDouble(map['kgPrice']),
-      ctrPrice: parseDouble(map['ctrPrice']),
-      pcsPrice: parseDouble(map['pcsPrice']),
-      isHidden: (map['isHidden'] != null && map['isHidden'] is bool)
-          ? map['isHidden'] as bool
-          : false,
+      kgPrice: _parseDouble(map['kgPrice']),
+      ctrPrice: _parseDouble(map['ctrPrice']),
+      pcsPrice: _parseDouble(map['pcsPrice']),
+      isHidden: map['isHidden'] == true,
     );
   }
+
+  static double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  static int _parseInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value) ?? 0;
+    if (value is double) return value.toInt();
+    return 0;
+  }
+
   Product copyWith({
     String? id,
     String? name,
@@ -200,7 +197,7 @@ class Product {
     double? kgPrice,
     double? ctrPrice,
     double? pcsPrice,
-    bool? isHidden, // ✅ new field
+    bool? isHidden,
   }) {
     return Product(
       id: id ?? this.id,
@@ -211,7 +208,7 @@ class Product {
       unit: unit ?? this.unit,
       stock: stock ?? this.stock,
       description: description ?? this.description,
-      images: images ?? List<String>.from(this.images),
+      images: images ?? this.images,
       categoryId: categoryId ?? this.categoryId,
       hyperMarket: hyperMarket ?? this.hyperMarket,
       hyperMarketPrice: hyperMarketPrice ?? this.hyperMarketPrice,
@@ -219,23 +216,39 @@ class Product {
       kgPrice: kgPrice ?? this.kgPrice,
       ctrPrice: ctrPrice ?? this.ctrPrice,
       pcsPrice: pcsPrice ?? this.pcsPrice,
-      isHidden: isHidden ?? this.isHidden, // ✅ updated copy
+      isHidden: isHidden ?? this.isHidden,
     );
   }
 }
 
+// ==================== PRODUCT PROVIDER ====================
 class ProductProvider extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final ImagePicker _imagePicker = ImagePicker();
 
-  // ------------------- STATE -------------------
+  // ==================== PAGINATION CONFIG ====================
+  static const int _pageSize = 15; // Reduced from 20 for better performance
+  static const int _maxCachedProducts = 100; // Maximum products to keep in memory
+
+  // ==================== STATE ====================
   final List<Product> _products = [];
   final List<Order> _orders = [];
   final List<Category> _categories = [];
   List<dynamic> images = [];
 
-  Product? _editingProduct;
+  DocumentSnapshot? _lastDocument;
+  bool _hasMoreProducts = true;
+  bool _isLoadingMore = false;
+  bool _initialLoadComplete = false;
 
-  // Form Controllers
+  Product? _editingProduct;
+  String? selectedCategory;
+  String? selectedMarket;
+  String _searchQuery = "";
+  String? expandedProductId;
+  final List<String> _selectedFilterCategories = [];
+
+  // ==================== FORM CONTROLLERS ====================
   final nameController = TextEditingController();
   final itemCodeController = TextEditingController();
   final priceController = TextEditingController();
@@ -249,143 +262,216 @@ class ProductProvider extends ChangeNotifier {
   final hypermarketController = TextEditingController();
   final marketController = TextEditingController();
 
-  String? selectedCategory;
-  String? selectedMarket;
-  String searchQuery = "";
-  String? expandedProductId;
-  List<String> selectedFilterCategories = [];
+  // ==================== SUBSCRIPTIONS ====================
+  StreamSubscription<QuerySnapshot>? _ordersSub;
+  StreamSubscription<QuerySnapshot>? _categorySub;
 
-  bool _isFormFilled = false;
-
-  // ------------------- GETTERS -------------------
+  // ==================== GETTERS ====================
   List<Product> get products => List.unmodifiable(_products);
   List<Order> get orders => List.unmodifiable(_orders);
   List<Category> get categories => List.unmodifiable(_categories);
+  bool get hasMoreProducts => _hasMoreProducts;
+  bool get isLoadingMore => _isLoadingMore;
+  bool get initialLoadComplete => _initialLoadComplete;
+  List<String> get selectedFilterCategories => _selectedFilterCategories;
+  String get searchQuery => _searchQuery;
 
   double get totalOrderValue =>
       _orders.fold(0.0, (sum, order) => sum + order.total);
 
   List<Product> get filteredProducts {
     return _products.where((p) {
-      final matchesSearch =
-          searchQuery.isEmpty ||
-          p.name.toLowerCase().contains(searchQuery.toLowerCase());
-      final matchesCategory =
-          selectedFilterCategories.isEmpty ||
-          selectedFilterCategories.contains(p.categoryId);
+      final matchesSearch = _searchQuery.isEmpty ||
+          p.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          p.itemCode.toLowerCase().contains(_searchQuery.toLowerCase());
+      
+      final matchesCategory = _selectedFilterCategories.isEmpty ||
+          _selectedFilterCategories.contains(p.categoryId);
+      
       return matchesSearch && matchesCategory;
     }).toList();
   }
 
-  // ------------------- FIRESTORE SUBSCRIPTIONS -------------------
-  StreamSubscription<QuerySnapshot>? _productSub;
-  StreamSubscription<QuerySnapshot>? _ordersSub;
-  StreamSubscription<QuerySnapshot>? _categorySub;
-
-  // ------------------- INITIALIZER -------------------
+  // ==================== INITIALIZATION ====================
   ProductProvider() {
-    _listenProducts();
+    _initializeProvider();
+  }
+
+  Future<void> _initializeProvider() async {
+    await _loadInitialProducts();
     _listenCategories();
     _listenOrders();
   }
 
-  // ------------------- PRODUCTS -------------------
-  void _listenProducts() {
-    _productSub?.cancel();
-    _productSub = _firestore.collection('products').snapshots().listen((
-      snapshot,
-    ) {
-      bool hasChanged = false;
+  // ==================== PAGINATION METHODS ====================
+  Future<void> _loadInitialProducts() async {
+    try {
+      log('📥 Loading initial products...');
+      
+      final query = _firestore
+          .collection('products')
+          .orderBy('name')
+          .limit(_pageSize);
 
-      for (final change in snapshot.docChanges) {
-        final data = change.doc.data();
-        if (data == null) continue;
+      final snapshot = await query.get();
 
-        final product = Product.fromMap(data);
+      if (snapshot.docs.isNotEmpty) {
+        _lastDocument = snapshot.docs.last;
+        _products.clear();
 
-        switch (change.type) {
-          case DocumentChangeType.added:
-            _products.add(product);
-            hasChanged = true;
-            break;
-          case DocumentChangeType.modified:
-            final index = _products.indexWhere((p) => p.id == product.id);
-            if (index != -1) {
-              _products[index] = product;
-              hasChanged = true;
-            }
-            break;
-          case DocumentChangeType.removed:
-            _products.removeWhere((p) => p.id == product.id);
-            hasChanged = true;
-            break;
+        for (var doc in snapshot.docs) {
+          try {
+            _products.add(Product.fromMap(doc.data()));
+          } catch (e) {
+            log('⚠️ Error parsing product: $e');
+          }
         }
+
+        _hasMoreProducts = snapshot.docs.length == _pageSize;
+      } else {
+        _hasMoreProducts = false;
       }
 
-      if (hasChanged) notifyListeners(); // ✅ only rebuild if something changed
-    }, onError: (error) => log('❌ listenProducts error: $error'));
+      _initialLoadComplete = true;
+      notifyListeners();
+      log('✅ Loaded ${_products.length} products');
+    } catch (e, stack) {
+      log('❌ _loadInitialProducts error: $e');
+      log(stack.toString());
+      _initialLoadComplete = true;
+      _hasMoreProducts = false;
+      notifyListeners();
+    }
   }
 
+  Future<void> loadMoreProducts() async {
+    if (_isLoadingMore || !_hasMoreProducts || _lastDocument == null) {
+      return;
+    }
+
+    _isLoadingMore = true;
+    notifyListeners();
+
+    try {
+      log('📥 Loading more products...');
+
+      final query = _firestore
+          .collection('products')
+          .orderBy('name')
+          .startAfterDocument(_lastDocument!)
+          .limit(_pageSize);
+
+      final snapshot = await query.get();
+
+      if (snapshot.docs.isNotEmpty) {
+        _lastDocument = snapshot.docs.last;
+
+        for (var doc in snapshot.docs) {
+          try {
+            final product = Product.fromMap(doc.data());
+            if (!_products.any((p) => p.id == product.id)) {
+              _products.add(product);
+            }
+          } catch (e) {
+            log('⚠️ Error parsing product: $e');
+          }
+        }
+
+        _hasMoreProducts = snapshot.docs.length == _pageSize;
+        
+        // Memory management: Remove oldest products if exceeding limit
+        if (_products.length > _maxCachedProducts) {
+          _products.removeRange(0, _products.length - _maxCachedProducts);
+          log('🧹 Cleaned up old products. Current count: ${_products.length}');
+        }
+      } else {
+        _hasMoreProducts = false;
+      }
+
+      log('✅ Total products: ${_products.length}');
+    } catch (e, stack) {
+      log('❌ loadMoreProducts error: $e');
+      log(stack.toString());
+      _hasMoreProducts = false;
+    } finally {
+      _isLoadingMore = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshProducts() async {
+    log('🔄 Refreshing products...');
+    _products.clear();
+    _lastDocument = null;
+    _hasMoreProducts = true;
+    _initialLoadComplete = false;
+    notifyListeners();
+
+    await _loadInitialProducts();
+  }
+
+  // ==================== PRODUCT OPERATIONS ====================
   Future<void> addProduct(Product product, List<dynamic> images) async {
     try {
-      // 1️⃣ Upload images to Cloudinary
-      final imageUrls = await uploadMultipleImagesToCloudinary(images);
-
-      // 2️⃣ Create a new product with uploaded image URLs
+      log('➕ Adding new product...');
+      
+      final imageUrls = await _uploadMultipleImages(images);
       final newProduct = product.copyWith(images: imageUrls);
 
-      // 3️⃣ Save to Firestore
       await _firestore
           .collection('products')
           .doc(newProduct.id)
           .set(newProduct.toMap());
 
+      _products.insert(0, newProduct);
       notifyListeners();
-      log("✅ Product added successfully with Cloudinary images");
+      
+      log("✅ Product added successfully");
     } catch (e, stack) {
       log("❌ addProduct Error: $e");
       log(stack.toString());
-      throw Exception("Failed to add product");
+      rethrow;
     }
   }
 
   Future<void> editProduct(Product oldProduct, Product newProduct) async {
     try {
+      log('✏️ Editing product: ${oldProduct.id}');
+      
       await _firestore
           .collection('products')
           .doc(oldProduct.id)
           .update(newProduct.toMap());
-      // final index = _products.indexWhere((p) => p.id == oldProduct.id);
-      // if (index != -1) _products[index] = newProduct;
 
       final index = _products.indexWhere((p) => p.id == newProduct.id);
       if (index != -1) {
         _products[index] = newProduct;
       } else {
-        // Optional: if the product isn't found, add it (safety)
         _products.add(newProduct);
       }
-
-      // ✅ Notify listeners to update the UI immediately
 
       notifyListeners();
       log("✅ Product updated successfully");
     } catch (e, stack) {
       log("❌ editProduct Error: $e");
       log(stack.toString());
-      throw Exception("Failed to edit product");
+      rethrow;
     }
   }
 
   Future<void> deleteProduct(String id) async {
     try {
+      log('🗑️ Deleting product: $id');
+      
       await _firestore.collection('products').doc(id).delete();
       _products.removeWhere((p) => p.id == id);
       notifyListeners();
+      
+      log("✅ Product deleted successfully");
     } catch (e, stack) {
       log("❌ deleteProduct Error: $e");
       log(stack.toString());
-      throw Exception("Failed to delete product");
+      rethrow;
     }
   }
 
@@ -394,12 +480,11 @@ class ProductProvider extends ChangeNotifier {
       await _firestore.collection('products').doc(id).set(
         {
           'isHidden': hide,
-          'updatedAt': FieldValue.serverTimestamp(), // optional
+          'updatedAt': FieldValue.serverTimestamp(),
         },
-        SetOptions(merge: true), // ✅ only updates the given fields
+        SetOptions(merge: true),
       );
 
-      // update locally if you have the product in memory
       final index = _products.indexWhere((p) => p.id == id);
       if (index != -1) {
         _products[index] = _products[index].copyWith(isHidden: hide);
@@ -409,33 +494,61 @@ class ProductProvider extends ChangeNotifier {
     } catch (e, stack) {
       log("❌ toggleProductVisibility Error: $e");
       log(stack.toString());
-      throw Exception("Failed to update product visibility");
+      rethrow;
     }
   }
 
-  void toggleExpanded(String productId) {
-    expandedProductId = expandedProductId == productId ? null : productId;
-    notifyListeners();
+  Future<void> setOfferPrice(Product product, double? offerPrice) async {
+    await _updateProductField(product, {'offerPrice': offerPrice});
   }
 
-  // ------------------- CATEGORIES -------------------
+  Future<void> setHyperMarketPrice(Product product, double? price) async {
+    await _updateProductField(product, {'hyperMarketPrice': price});
+  }
+
+  Future<void> _updateProductField(
+    Product product,
+    Map<String, dynamic> fields,
+  ) async {
+    try {
+      await _firestore.collection('products').doc(product.id).update(fields);
+      
+      final index = _products.indexWhere((p) => p.id == product.id);
+      if (index != -1) {
+        final existing = _products[index];
+        _products[index] = existing.copyWith(
+          offerPrice: fields['offerPrice'] ?? existing.offerPrice,
+          hyperMarketPrice: fields['hyperMarketPrice'] ?? existing.hyperMarketPrice,
+        );
+      }
+      
+      notifyListeners();
+    } catch (e, stack) {
+      log("❌ _updateProductField Error: $e");
+      log(stack.toString());
+      rethrow;
+    }
+  }
+
+  // ==================== CATEGORIES ====================
   void _listenCategories() {
     _categorySub?.cancel();
-    _categorySub = _firestore.collection('categories').snapshots().listen((
-      snapshot,
-    ) {
-      _categories
-        ..clear()
-        ..addAll(snapshot.docs.map((doc) => Category.fromMap(doc.data())));
-      notifyListeners();
-    }, onError: (error) => log('❌ listenCategories error: $error'));
+    _categorySub = _firestore.collection('categories').snapshots().listen(
+      (snapshot) {
+        _categories
+          ..clear()
+          ..addAll(snapshot.docs.map((doc) => Category.fromMap(doc.data())));
+        notifyListeners();
+      },
+      onError: (error) => log('❌ listenCategories error: $error'),
+    );
   }
 
   void toggleFilterCategory(String categoryId) {
-    if (selectedFilterCategories.contains(categoryId)) {
-      selectedFilterCategories.remove(categoryId);
+    if (_selectedFilterCategories.contains(categoryId)) {
+      _selectedFilterCategories.remove(categoryId);
     } else {
-      selectedFilterCategories.add(categoryId);
+      _selectedFilterCategories.add(categoryId);
     }
     notifyListeners();
   }
@@ -446,7 +559,7 @@ class ProductProvider extends ChangeNotifier {
   }
 
   void setSearchQuery(String query) {
-    searchQuery = query;
+    _searchQuery = query;
     notifyListeners();
   }
 
@@ -455,23 +568,34 @@ class ProductProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ------------------- ORDERS -------------------
+  void toggleExpanded(String productId) {
+    expandedProductId = expandedProductId == productId ? null : productId;
+    notifyListeners();
+  }
+
+  // ==================== ORDERS ====================
   void _listenOrders() {
     _ordersSub?.cancel();
-    _ordersSub = _firestore.collection('orders').snapshots().listen((snapshot) {
-      _orders
-        ..clear()
-        ..addAll(snapshot.docs.map((doc) => Order.fromMap(doc.data())));
-      notifyListeners();
-    }, onError: (error) => log('❌ listenOrders error: $error'));
+    _ordersSub = _firestore.collection('orders').snapshots().listen(
+      (snapshot) {
+        _orders
+          ..clear()
+          ..addAll(snapshot.docs.map((doc) => Order.fromMap(doc.data())));
+        notifyListeners();
+      },
+      onError: (error) => log('❌ listenOrders error: $error'),
+    );
   }
 
   Future<void> deleteAllOrders() async {
     try {
       final snapshot = await _firestore.collection('orders').get();
       final batch = _firestore.batch();
-      for (var doc in snapshot.docs) batch.delete(doc.reference);
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
       await batch.commit();
+      
       _orders.clear();
       notifyListeners();
       log("✅ All orders deleted successfully");
@@ -480,89 +604,33 @@ class ProductProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> setOfferPrice(Product product, double? offerPrice) async {
-    await _updateProductField(product, {'offerPrice': offerPrice});
-  }
-
-  Future<void> setHyperMarketPrice(
-    Product product,
-    double? hyperMarketPrice,
-  ) async {
-    await _updateProductField(product, {'hyperMarketPrice': hyperMarketPrice});
-  }
-
-  Future<void> _updateProductField(
-    Product product,
-    Map<String, dynamic> fields,
-  ) async {
-    try {
-      await _firestore.collection('products').doc(product.id).update(fields);
-      final index = _products.indexWhere((p) => p.id == product.id);
-      if (index != -1) {
-        final existing = _products[index];
-        _products[index] = existing.copyWith(
-          offerPrice: fields['offerPrice'] ?? existing.offerPrice,
-          hyperMarketPrice:
-              fields['hyperMarketPrice'] ?? existing.hyperMarketPrice,
-        );
-      }
-      notifyListeners();
-    } catch (e, stack) {
-      log("❌ _updateProductField Error: $e");
-      log(stack.toString());
-      throw Exception("Failed to update product field");
-    }
-  }
-
-  void updateProduct(Product updatedProduct) {
-    // Find the product in the list
-    final index = products.indexWhere((p) => p.id == updatedProduct.id);
-
-    if (index != -1) {
-      products[index] = updatedProduct; // replace with the updated product
-      notifyListeners(); // tell Flutter to rebuild the UI
-    }
-  }
-
-  // ------------------- IMAGES -------------------
+  // ==================== IMAGE HANDLING ====================
   Future<void> pickImageFromCamera() async {
-    await _pickImage(ImageSource.camera);
+    final pickedFile = await _imagePicker.pickImage(source: ImageSource.camera);
+    if (pickedFile != null) {
+      images.add(File(pickedFile.path));
+      notifyListeners();
+    }
   }
 
   Future<void> pickMultipleImages() async {
-    final picker = ImagePicker();
-    final pickedFiles = await picker.pickMultiImage();
-
-    if (pickedFiles != null) {
-      for (var xfile in pickedFiles) {
-        final file = File(xfile.path);
-        images.add(file);
-      }
+    final pickedFiles = await _imagePicker.pickMultiImage();
+    if (pickedFiles.isNotEmpty) {
+      images.addAll(pickedFiles.map((xfile) => File(xfile.path)));
       notifyListeners();
     }
   }
 
-  Future<void> _pickImage(ImageSource source) async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: source);
-    if (pickedFile != null) {
-      final file = File(pickedFile.path);
-      images.add(file);
+  void addImage(File file) {
+    images.add(file);
+    notifyListeners();
+  }
 
+  void removeImageAt(int index) {
+    if (index >= 0 && index < images.length) {
+      images.removeAt(index);
       notifyListeners();
     }
-  }
-
-  void addImage(File base64) {
-    images.add(base64);
-    notifyListeners();
-  }
-
-  void removeImageAt(int index, Product product) {
-    if (index < 0 || index >= images.length) return;
-
-    images.removeAt(index);
-    notifyListeners();
   }
 
   void removeImage(File image) {
@@ -570,7 +638,53 @@ class ProductProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ------------------- FORM MANAGEMENT -------------------
+  Future<List<String>> _uploadMultipleImages(List<dynamic> imageFiles) async {
+    final List<String> uploadedUrls = [];
+
+    for (final imageFile in imageFiles) {
+      try {
+        final url = await _uploadImageToCloudinary(imageFile);
+        if (url != null) {
+          uploadedUrls.add(url);
+        }
+      } catch (e) {
+        log('⚠️ Failed to upload image: $e');
+      }
+    }
+
+    return uploadedUrls;
+  }
+
+  Future<String?> _uploadImageToCloudinary(File imageFile) async {
+    const cloudName = 'dmqmff4g4';
+    const uploadPreset = 'red_rose_contracting_w.l.l';
+
+    try {
+      final url = Uri.parse(
+        'https://api.cloudinary.com/v1_1/$cloudName/image/upload',
+      );
+
+      final request = http.MultipartRequest('POST', url)
+        ..fields['upload_preset'] = uploadPreset
+        ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+
+      final response = await request.send();
+
+      if (response.statusCode == 200) {
+        final responseData = await response.stream.bytesToString();
+        final decoded = json.decode(responseData);
+        return decoded['secure_url'];
+      } else {
+        log('❌ Upload failed: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      log('❌ Cloudinary upload error: $e');
+      return null;
+    }
+  }
+
+  // ==================== FORM MANAGEMENT ====================
   void resetForm() {
     images.clear();
     nameController.clear();
@@ -587,7 +701,6 @@ class ProductProvider extends ChangeNotifier {
     marketController.clear();
     selectedMarket = null;
     selectedCategory = null;
-    _isFormFilled = false;
     notifyListeners();
   }
 
@@ -595,8 +708,8 @@ class ProductProvider extends ChangeNotifier {
     if (_editingProduct?.id == product.id) return;
 
     resetForm();
-
     _editingProduct = product;
+    
     nameController.text = product.name;
     itemCodeController.text = product.itemCode;
     priceController.text = product.price.toString();
@@ -611,71 +724,34 @@ class ProductProvider extends ChangeNotifier {
     ctnPriceController.text = product.ctrPrice?.toString() ?? '';
     pcsPriceController.text = product.pcsPrice?.toString() ?? '';
 
-    // ✅ Only store existing image URLs
     images = List<dynamic>.from(product.images);
-
     notifyListeners();
   }
 
   Future<void> saveEditedProductDirect(Product updatedProduct) async {
-    // Separate images
-    final List<File> newImages = images.whereType<File>().toList();
-    final List<String> existingUrls = images.whereType<String>().toList();
+    final newImages = images.whereType<File>().toList();
+    final existingUrls = images.whereType<String>().toList();
 
     List<String> finalImageUrls = existingUrls;
 
     if (newImages.isNotEmpty) {
-      final uploadedUrls = await uploadMultipleImagesToCloudinary(newImages);
+      final uploadedUrls = await _uploadMultipleImages(newImages);
       finalImageUrls = [...existingUrls, ...uploadedUrls];
     }
 
     final productToSave = updatedProduct.copyWith(images: finalImageUrls);
-
     await editProduct(updatedProduct, productToSave);
 
     resetForm();
     _editingProduct = null;
   }
 
-  //   Future<void> saveEditedProduct(Product oldProduct) async {
-  //     if (_editingProduct == null) return;
-
-  //     final newProduct = Product(
-  //       id: oldProduct.id,
-  //       name: nameController.text.trim(),
-  //       itemCode: itemCodeController.text.trim(),
-  //       price: double.tryParse(priceController.text.trim()) ?? 0,
-  //       offerPrice: double.tryParse(offerPriceController.text.trim()),
-  //       stock: int.tryParse(stockController.text.trim()) ?? 0,
-  //       unit: unitController.text.trim(),
-  //       market: selectedMarket ?? "",
-  //       hyperMarket: double.tryParse(hypermarketController.text.trim()) ?? 0,
-  //       images: List<String>.from(images),
-  //       categoryId: selectedCategory ?? "",
-  //       description: descriptionController.text.trim(),
-  //       kgPrice: double.tryParse(kgPriceController.text.trim()),
-  //       ctrPrice: double.tryParse(ctnPriceController.text.trim()),
-  //       pcsPrice: double.tryParse(pcsPriceController.text.trim()),
-  //     );
-
-  //     await editProduct(oldProduct, newProduct);
-
-  //     // Ensure local list has updated images
-  //     final index = _products.indexWhere((p) => p.id == newProduct.id);
-  //     if (index != -1) {
-  //       _products[index] = newProduct; // ✅ new images now in provider list
-  //     }
-
-  //     resetForm();
-  //     _editingProduct = null;
-  //   }
-
-  // ------------------- CLEANUP -------------------
+  // ==================== CLEANUP ====================
   @override
   void dispose() {
-    _productSub?.cancel();
     _ordersSub?.cancel();
     _categorySub?.cancel();
+    
     nameController.dispose();
     itemCodeController.dispose();
     priceController.dispose();
@@ -688,48 +764,7 @@ class ProductProvider extends ChangeNotifier {
     descriptionController.dispose();
     hypermarketController.dispose();
     marketController.dispose();
+    
     super.dispose();
-  }
-
-  Future<List<String>> uploadMultipleImagesToCloudinary(
-    List<dynamic> imageFiles,
-  ) async {
-    log(imageFiles.length.toString());
-    final List<String> uploadedUrls = [];
-
-    for (final imageFile in imageFiles) {
-      final imageUrl = await uploadImageToCloudinary(imageFile);
-      if (imageUrl != null) {
-        uploadedUrls.add(imageUrl);
-      } else {
-        print('⚠️ Failed to upload one image');
-      }
-    }
-
-    return uploadedUrls;
-  }
-
-  Future<String?> uploadImageToCloudinary(File imageFile) async {
-    const cloudName = 'dmqmff4g4';
-    const uploadPreset = 'red_rose_contracting_w.l.l';
-
-    final url = Uri.parse(
-      'https://api.cloudinary.com/v1_1/$cloudName/image/upload',
-    );
-
-    final request = http.MultipartRequest('POST', url)
-      ..fields['upload_preset'] = uploadPreset
-      ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
-
-    final response = await request.send();
-
-    if (response.statusCode == 200) {
-      final responseData = await response.stream.bytesToString();
-      final decoded = json.decode(responseData);
-      return decoded['secure_url']; // ✅ return image URL
-    } else {
-      print('❌ Upload failed: ${response.statusCode}');
-      return null;
-    }
   }
 }

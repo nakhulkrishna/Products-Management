@@ -435,7 +435,7 @@ class _EditProductsState extends State<EditProducts> {
             top: 6,
             right: 6,
             child: InkWell(
-              onTap: () => provider.removeImageAt(index, widget.product),
+              onTap: () => provider.removeImageAt(index, ),
               child: Container(
                 decoration: const BoxDecoration(
                   color: Colors.red,
