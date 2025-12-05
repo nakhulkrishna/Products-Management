@@ -227,8 +227,7 @@ class ProductProvider extends ChangeNotifier {
   final ImagePicker _imagePicker = ImagePicker();
 
   // ==================== PAGINATION CONFIG ====================
-  static const int _pageSize = 15; // Reduced from 20 for better performance
-  static const int _maxCachedProducts = 100; // Maximum products to keep in memory
+  static const int _pageSize = 20; // Load 20 products at a time
 
   // ==================== STATE ====================
   final List<Product> _products = [];
@@ -353,7 +352,7 @@ class ProductProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      log('📥 Loading more products...');
+      log('📥 Loading more products... Current count: ${_products.length}');
 
       final query = _firestore
           .collection('products')
@@ -378,17 +377,11 @@ class ProductProvider extends ChangeNotifier {
         }
 
         _hasMoreProducts = snapshot.docs.length == _pageSize;
-        
-        // Memory management: Remove oldest products if exceeding limit
-        if (_products.length > _maxCachedProducts) {
-          _products.removeRange(0, _products.length - _maxCachedProducts);
-          log('🧹 Cleaned up old products. Current count: ${_products.length}');
-        }
       } else {
         _hasMoreProducts = false;
       }
 
-      log('✅ Total products: ${_products.length}');
+      log('✅ Total products loaded: ${_products.length}');
     } catch (e, stack) {
       log('❌ loadMoreProducts error: $e');
       log(stack.toString());

@@ -15,7 +15,7 @@ class ProductsManagement extends StatefulWidget {
 
 class _ProductsManagementState extends State<ProductsManagement> {
   final ScrollController _scrollController = ScrollController();
-  static const double _scrollThreshold = 300.0;
+  static const double _scrollThreshold = 200.0;
 
   @override
   void initState() {
@@ -34,9 +34,8 @@ class _ProductsManagementState extends State<ProductsManagement> {
 
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.position.pixels;
-    final threshold = maxScroll - _scrollThreshold;
 
-    if (currentScroll >= threshold) {
+    if (currentScroll >= maxScroll - _scrollThreshold) {
       _loadMoreProducts();
     }
   }
@@ -55,68 +54,142 @@ class _ProductsManagementState extends State<ProductsManagement> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _buildAppBar(context),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: _buildAppBar(),
       body: RefreshIndicator(
         onRefresh: _refreshProducts,
         child: CustomScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            _buildSearchAndFilterBar(context),
+            _buildSearchBar(),
+            _buildStatsBar(),
             _buildProductsList(),
           ],
         ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _navigateToAddProduct(context),
+        icon: const Icon(Iconsax.add),
+        label: const Text("Add"),
       ),
     );
   }
 
   // ==================== APP BAR ====================
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
+  PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      automaticallyImplyLeading: false,
-      title: const Text("Products"),
+      title: const Text("Products Management"),
       actions: [
         IconButton(
-          onPressed: () => _navigateToAddProduct(context),
-          icon: const Icon(Iconsax.add),
-          tooltip: 'Add Product',
+          icon: const Icon(Iconsax.refresh),
+          onPressed: _refreshProducts,
+          tooltip: 'Refresh',
         ),
       ],
     );
   }
 
-  void _navigateToAddProduct(BuildContext context) {
-    context.read<ProductProvider>().resetForm();
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const AddProducts()),
-    );
-  }
-
-  // ==================== SEARCH & FILTER BAR ====================
-  Widget _buildSearchAndFilterBar(BuildContext context) {
-    final theme = Theme.of(context);
-    
+  // ==================== SEARCH BAR ====================
+  Widget _buildSearchBar() {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.all(8.0),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: [
             Expanded(
-              flex: 5,
-              child: _SearchBar(theme: theme),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              flex: 1,
-              child: _FilterButton(
-                theme: theme,
-                onPressed: () => _showFilterBottomSheet(context),
+              child: TextField(
+                decoration: InputDecoration(
+                  hintText: "Search products...",
+                  prefixIcon: const Icon(Iconsax.search_normal_1),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+                onChanged: (value) {
+                  context.read<ProductProvider>().setSearchQuery(value);
+                },
               ),
+            ),
+            const SizedBox(width: 12),
+            Consumer<ProductProvider>(
+              builder: (context, provider, _) {
+                final hasFilters = provider.selectedFilterCategories.isNotEmpty;
+                return IconButton.filled(
+                  icon: Badge(
+                    isLabelVisible: hasFilters,
+                    label: Text('${provider.selectedFilterCategories.length}'),
+                    child: const Icon(Iconsax.filter),
+                  ),
+                  onPressed: () => _showFilterBottomSheet(context),
+                  style: IconButton.styleFrom(
+                    backgroundColor: hasFilters 
+                      ? Theme.of(context).primaryColor 
+                      : null,
+                  ),
+                );
+              },
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // ==================== STATS BAR ====================
+  Widget _buildStatsBar() {
+    return SliverToBoxAdapter(
+      child: Consumer<ProductProvider>(
+        builder: (context, provider, _) {
+          final total = provider.filteredProducts.length;
+          final visible = provider.filteredProducts.where((p) => !p.isHidden).length;
+          final hidden = provider.filteredProducts.where((p) => p.isHidden).length;
+
+          return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildStatItem("Total", total.toString(), Iconsax.box),
+                _buildStatItem("Visible", visible.toString(), Iconsax.eye),
+                _buildStatItem("Hidden", hidden.toString(), Iconsax.eye_slash),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
     );
   }
 
@@ -133,11 +206,11 @@ class _ProductsManagementState extends State<ProductsManagement> {
         final products = provider.filteredProducts;
 
         if (products.isEmpty) {
-          return _buildEmptyState(context);
+          return _buildEmptyState();
         }
 
         return SliverPadding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          padding: const EdgeInsets.all(16),
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) {
@@ -150,16 +223,6 @@ class _ProductsManagementState extends State<ProductsManagement> {
                 );
               },
               childCount: products.length + 1,
-              findChildIndexCallback: (Key key) {
-                final valueKey = key as ValueKey<String>;
-                final products = provider.filteredProducts;
-                for (int i = 0; i < products.length; i++) {
-                  if (products[i].id == valueKey.value) {
-                    return i;
-                  }
-                }
-                return null;
-              },
             ),
           ),
         );
@@ -167,27 +230,22 @@ class _ProductsManagementState extends State<ProductsManagement> {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
-    final theme = Theme.of(context);
-    
+  Widget _buildEmptyState() {
     return SliverFillRemaining(
       child: Center(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Image.asset(
-              'asstes/Image-3.png',
-              width: 200,
-              height: 200,
-              fit: BoxFit.contain,
-            ),
+            Icon(Iconsax.box, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
               "No products found",
-              style: theme.textTheme.bodyLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Try adjusting your search or filters",
+              style: TextStyle(color: Colors.grey[600]),
             ),
           ],
         ),
@@ -196,7 +254,7 @@ class _ProductsManagementState extends State<ProductsManagement> {
   }
 
   Widget _buildLoadingIndicator(ProductProvider provider) {
-    if (!provider.isLoadingMore) return const SizedBox.shrink();
+    if (!provider.isLoadingMore) return const SizedBox(height: 80);
     
     return const Padding(
       padding: EdgeInsets.all(16.0),
@@ -204,10 +262,18 @@ class _ProductsManagementState extends State<ProductsManagement> {
     );
   }
 
-  // ==================== FILTER BOTTOM SHEET ====================
+  void _navigateToAddProduct(BuildContext context) {
+    context.read<ProductProvider>().resetForm();
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AddProducts()),
+    );
+  }
+
   void _showFilterBottomSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -216,70 +282,7 @@ class _ProductsManagementState extends State<ProductsManagement> {
   }
 }
 
-// ==================== SEARCH BAR WIDGET ====================
-class _SearchBar extends StatelessWidget {
-  final ThemeData theme;
-
-  const _SearchBar({required this.theme});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 50,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(40),
-        color: theme.cardColor,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Icon(Icons.search, color: theme.iconTheme.color),
-          const SizedBox(width: 10),
-          Expanded(
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: "Search products...",
-                border: InputBorder.none,
-              ),
-              onChanged: (value) {
-                context.read<ProductProvider>().setSearchQuery(value);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ==================== FILTER BUTTON WIDGET ====================
-class _FilterButton extends StatelessWidget {
-  final ThemeData theme;
-  final VoidCallback onPressed;
-
-  const _FilterButton({
-    required this.theme,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 50,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(40),
-        color: theme.cardColor,
-      ),
-      child: IconButton(
-        onPressed: onPressed,
-        icon: const Icon(Iconsax.filter),
-        tooltip: 'Filter Products',
-      ),
-    );
-  }
-}
-
-// ==================== PRODUCT CARD WIDGET ====================
+// ==================== PRODUCT CARD ====================
 class _ProductCard extends StatelessWidget {
   final Product product;
 
@@ -290,192 +293,241 @@ class _ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: GestureDetector(
-        onLongPress: () => _showProductOptions(context),
-        child: Container(
-          height: 120,
-          decoration: BoxDecoration(
-            color: theme.cardColor,
-            borderRadius: BorderRadius.circular(12),
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: () => _navigateToEdit(context),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildProductImage(),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildProductInfo(context),
+              ),
+              _buildActionMenu(context),
+            ],
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProductImage() {
+    final hasImage = product.images.isNotEmpty && product.images.first.isNotEmpty;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 80,
+        height: 80,
+        color: Colors.grey[200],
+        child: hasImage
+            ? Image.network(
+                product.images.first,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(Iconsax.image),
+                loadingBuilder: (_, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  );
+                },
+              )
+            : const Icon(Iconsax.image, size: 32),
+      ),
+    );
+  }
+
+  Widget _buildProductInfo(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasOffer = product.offerPrice != null;
+    final displayPrice = hasOffer ? product.offerPrice! : product.price;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Product Name
+        Text(
+          product.name,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
+        
+        // Category & Status Row
+        Row(
+          children: [
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: theme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  product.categoryId,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: theme.primaryColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: product.isHidden
+                    ? Colors.red.withOpacity(0.1)
+                    : Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                product.isHidden ? "Hidden" : "Visible",
+                style: TextStyle(
+                  fontSize: 11,
+                  color: product.isHidden ? Colors.red : Colors.green,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        
+        // Price Section
+        Row(
+          children: [
+            Text(
+              "QR ${displayPrice.toStringAsFixed(2)}",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: hasOffer ? Colors.green : theme.primaryColor,
+              ),
+            ),
+            if (hasOffer && product.price != product.offerPrice) ...[
+              const SizedBox(width: 8),
+              Text(
+                "QR ${product.price.toStringAsFixed(2)}",
+                style: const TextStyle(
+                  fontSize: 12,
+                  decoration: TextDecoration.lineThrough,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
+          ],
+        ),
+        
+        // Stock Warning
+        if (product.stock <= 10)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
             child: Row(
               children: [
-                _ProductImage(product: product),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _ProductDetails(product: product, theme: theme),
+                Icon(
+                  Iconsax.warning_2,
+                  size: 14,
+                  color: Colors.orange[700],
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  "Low stock (${product.stock})",
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.orange[700],
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  void _showProductOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _ProductOptionsBottomSheet(product: product),
-    );
-  }
-}
-
-// ==================== PRODUCT IMAGE WIDGET ====================
-class _ProductImage extends StatelessWidget {
-  final Product product;
-
-  const _ProductImage({required this.product});
-
-  bool get _hasValidImage =>
-      product.images.isNotEmpty && product.images.first.isNotEmpty;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => _hasValidImage ? _showImagePreview(context) : null,
-      child: _hasValidImage ? _buildNetworkImage() : _buildPlaceholder(),
-    );
-  }
-
-  Widget _buildNetworkImage() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: SizedBox(
-        width: 100,
-        height: 100,
-        child: Image.network(
-          product.images.first,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _buildPlaceholder(),
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return const Center(
-              child: CircularProgressIndicator(strokeWidth: 2),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlaceholder() {
-    return const Icon(Iconsax.image, size: 60);
-  }
-
-  void _showImagePreview(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ImagePreviewPage(images: product.images),
-      ),
-    );
-  }
-}
-
-// ==================== PRODUCT DETAILS WIDGET ====================
-class _ProductDetails extends StatelessWidget {
-  final Product product;
-  final ThemeData theme;
-
-  const _ProductDetails({
-    required this.product,
-    required this.theme,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildProductName(),
-        _buildCategoryAndStatus(),
-        const SizedBox(height: 10),
-        _buildPriceSection(context),
       ],
     );
   }
 
-  Widget _buildProductName() {
-    return Text(
-      product.name,
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-      style: theme.textTheme.bodyLarge?.copyWith(
-        fontSize: 12,
-        fontWeight: FontWeight.bold,
-      ),
-    );
-  }
-
-  Widget _buildCategoryAndStatus() {
-    return Row(
-      children: [
-        Text(
-          product.categoryId,
-          style: theme.textTheme.bodyMedium,
+  Widget _buildActionMenu(BuildContext context) {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert),
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: 'edit',
+          child: Row(
+            children: [
+              Icon(Iconsax.edit, size: 18),
+              SizedBox(width: 12),
+              Text('Edit'),
+            ],
+          ),
         ),
-        const Spacer(),
-        Text(
-          product.isHidden ? "Hidden" : "Visible",
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: product.isHidden ? Colors.red : Colors.green,
+        const PopupMenuItem(
+          value: 'price',
+          child: Row(
+            children: [
+              Icon(Iconsax.dollar_circle, size: 18),
+              SizedBox(width: 12),
+              Text('Update Prices'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'visibility',
+          child: Row(
+            children: [
+              Icon(
+                product.isHidden ? Iconsax.eye : Iconsax.eye_slash,
+                size: 18,
+              ),
+              const SizedBox(width: 12),
+              Text(product.isHidden ? 'Show' : 'Hide'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Iconsax.trash, size: 18, color: Colors.red),
+              SizedBox(width: 12),
+              Text('Delete', style: TextStyle(color: Colors.red)),
+            ],
           ),
         ),
       ],
+      onSelected: (value) {
+        switch (value) {
+          case 'edit':
+            _navigateToEdit(context);
+            break;
+          case 'price':
+            _showPriceEditSheet(context);
+            break;
+          case 'visibility':
+            _toggleVisibility(context);
+            break;
+          case 'delete':
+            _confirmDelete(context);
+            break;
+        }
+      },
     );
   }
 
-  Widget _buildPriceSection(BuildContext context) {
-    return InkWell(
-      onTap: () => _showPriceEditSheet(context),
-      child: Row(
-        children: [
-          if (_hasOfferPrice) _buildOfferPrice(),
-          if (_hasOfferPrice && _hasHyperMarketPrice)
-            const SizedBox(width: 10),
-          if (_hasHyperMarketPrice) _buildHyperMarketPrice(),
-        ],
-      ),
-    );
-  }
-
-  bool get _hasOfferPrice =>
-      product.offerPrice != null || (product.price != null && product.price != 0);
-
-  bool get _hasHyperMarketPrice =>
-      product.hyperMarketPrice != null || product.hyperMarket != null;
-
-  Widget _buildOfferPrice() {
-    final price = product.offerPrice ?? product.price;
-    return Text(
-      "Qr ${price.toStringAsFixed(2)}",
-      style: theme.textTheme.bodySmall?.copyWith(
-        color: Colors.green,
-        fontSize: 15,
-        fontWeight: FontWeight.bold,
-      ),
-    );
-  }
-
-  Widget _buildHyperMarketPrice() {
-    final price = product.hyperMarketPrice ?? product.hyperMarket;
-    return Text(
-      "Qr ${price?.toStringAsFixed(2) ?? '0.00'}",
-      style: theme.textTheme.bodySmall?.copyWith(
-        color: Colors.red,
-        fontSize: 15,
-        fontWeight: FontWeight.bold,
+  void _navigateToEdit(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditProducts(product: product),
       ),
     );
   }
@@ -490,6 +542,53 @@ class _ProductDetails extends StatelessWidget {
       builder: (_) => _PriceEditBottomSheet(product: product),
     );
   }
+
+  Future<void> _toggleVisibility(BuildContext context) async {
+    final provider = context.read<ProductProvider>();
+    await provider.toggleProductVisibility(product.id, !product.isHidden);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            product.isHidden
+                ? "Product is now visible"
+                : "Product is now hidden",
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _confirmDelete(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete Product"),
+        content: Text("Delete '${product.name}'? This cannot be undone."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          FilledButton(
+            onPressed: () {
+              context.read<ProductProvider>().deleteProduct(product.id);
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Product deleted")),
+              );
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text("Delete"),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ==================== FILTER BOTTOM SHEET ====================
@@ -501,59 +600,84 @@ class _FilterBottomSheet extends StatelessWidget {
     return Consumer<ProductProvider>(
       builder: (context, provider, _) {
         return Container(
-          padding: const EdgeInsets.all(16),
-          height: 350,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                "Filter Products",
-                style: Theme.of(context).textTheme.headlineMedium,
+              // Header
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "Filter by Category",
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (provider.selectedFilterCategories.isNotEmpty)
+                      TextButton(
+                        onPressed: () {
+                          for (var cat in List.from(provider.selectedFilterCategories)) {
+                            provider.toggleFilterCategory(cat);
+                          }
+                        },
+                        child: const Text("Clear All"),
+                      ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: _buildCategoriesList(provider),
+              
+              const Divider(height: 1),
+              
+              // Categories List
+              Flexible(
+                child: provider.categories.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Text("No categories available"),
+                        ),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: provider.categories.length,
+                        itemBuilder: (context, index) {
+                          final category = provider.categories[index];
+                          final isSelected = provider.selectedFilterCategories
+                              .contains(category.name);
+
+                          return CheckboxListTile(
+                            title: Text(category.name),
+                            value: isSelected,
+                            onChanged: (_) {
+                              provider.toggleFilterCategory(category.name);
+                            },
+                          );
+                        },
+                      ),
               ),
-              const SizedBox(height: 10),
-              _buildApplyButton(context),
+              
+              const Divider(height: 1),
+              
+              // Apply Button
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text("Apply Filters"),
+                  ),
+                ),
+              ),
             ],
           ),
         );
       },
-    );
-  }
-
-  Widget _buildCategoriesList(ProductProvider provider) {
-    if (provider.categories.isEmpty) {
-      return const Center(child: Text("No categories available"));
-    }
-
-    return ListView.builder(
-      itemCount: provider.categories.length,
-      itemBuilder: (context, index) {
-        final category = provider.categories[index];
-        final isSelected =
-            provider.selectedFilterCategories.contains(category.name);
-
-        return ListTile(
-          title: Text(category.name),
-          trailing: Checkbox(
-            value: isSelected,
-            onChanged: (_) => provider.toggleFilterCategory(category.name),
-          ),
-          onTap: () => provider.toggleFilterCategory(category.name),
-        );
-      },
-    );
-  }
-
-  Widget _buildApplyButton(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text("Apply Filter"),
-      ),
     );
   }
 }
@@ -596,56 +720,72 @@ class _PriceEditBottomSheetState extends State<_PriceEditBottomSheet> {
       padding: EdgeInsets.only(
         left: 16,
         right: 16,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            "Set Offer Prices",
-            style: Theme.of(context).textTheme.headlineSmall,
+            "Update Prices",
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           ),
-          const SizedBox(height: 15),
-          _buildTextField(
-            controller: _offerPriceController,
-            label: "Offer Price",
-          ),
-          const SizedBox(height: 15),
-          _buildTextField(
-            controller: _hypermarketPriceController,
-            label: "Hypermarket Offer Price",
+          const SizedBox(height: 4),
+          Text(
+            widget.product.name,
+            style: TextStyle(color: Colors.grey[600]),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 20),
-          _buildSaveButton(context),
+          
+          TextField(
+            controller: _offerPriceController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: "Offer Price",
+              prefixIcon: const Icon(Iconsax.tag),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          TextField(
+            controller: _hypermarketPriceController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: "Hypermarket Price",
+              prefixIcon: const Icon(Iconsax.shop),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => _savePrices(context),
+                  child: const Text("Save"),
+                ),
+              ),
+            ],
+          ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-  }) {
-    return TextField(
-      controller: controller,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: InputDecoration(
-        labelText: label,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSaveButton(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: () => _savePrices(context),
-        child: const Text("Save"),
       ),
     );
   }
@@ -653,10 +793,6 @@ class _PriceEditBottomSheetState extends State<_PriceEditBottomSheet> {
   void _savePrices(BuildContext context) {
     final offerPrice = double.tryParse(_offerPriceController.text);
     final hyperPrice = double.tryParse(_hypermarketPriceController.text);
-
-    if (offerPrice == null && hyperPrice == null) {
-      return;
-    }
 
     final provider = context.read<ProductProvider>();
     
@@ -669,86 +805,10 @@ class _PriceEditBottomSheetState extends State<_PriceEditBottomSheet> {
     }
 
     Navigator.pop(context);
-  }
-}
-
-// ==================== PRODUCT OPTIONS BOTTOM SHEET ====================
-class _ProductOptionsBottomSheet extends StatelessWidget {
-  final Product product;
-
-  const _ProductOptionsBottomSheet({required this.product});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildEditOption(context),
-          _buildDeleteOption(context),
-          _buildVisibilityOption(context),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEditOption(BuildContext context) {
-    return ListTile(
-      leading: const Icon(Icons.edit, color: Colors.blue),
-      title: const Text("Edit"),
-      onTap: () {
-        Navigator.pop(context);
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => EditProducts(product: product),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildDeleteOption(BuildContext context) {
-    return ListTile(
-      leading: const Icon(Icons.delete, color: Colors.red),
-      title: const Text("Delete"),
-      onTap: () {
-        Navigator.pop(context);
-        context.read<ProductProvider>().deleteProduct(product.id);
-      },
-    );
-  }
-
-  Widget _buildVisibilityOption(BuildContext context) {
-    return ListTile(
-      leading: Icon(
-        product.isHidden ? Icons.visibility_off : Icons.remove_red_eye,
-        color: product.isHidden ? Colors.red : Colors.grey,
-      ),
-      title: Text(product.isHidden ? "Unhide" : "Hide"),
-      onTap: () => _toggleVisibility(context),
-    );
-  }
-
-  Future<void> _toggleVisibility(BuildContext context) async {
-    Navigator.pop(context);
     
-    final provider = context.read<ProductProvider>();
-    await provider.toggleProductVisibility(product.id, !product.isHidden);
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            product.isHidden
-                ? "Product is now visible"
-                : "Product is now hidden",
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Prices updated successfully")),
+    );
   }
 }
 
@@ -768,7 +828,7 @@ class ImagePreviewPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.transparent,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: PageView.builder(
@@ -776,7 +836,6 @@ class ImagePreviewPage extends StatelessWidget {
         itemCount: images.length,
         itemBuilder: (context, index) {
           return InteractiveViewer(
-            clipBehavior: Clip.none,
             minScale: 1.0,
             maxScale: 4.0,
             child: Center(
