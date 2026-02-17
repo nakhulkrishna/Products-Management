@@ -1,720 +1,590 @@
-import 'dart:convert';
-import 'dart:developer';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/categories/provider/category_provider.dart';
-import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
-import 'package:products_catelogs/products/provider/products_management_pro.dart';
-import 'package:products_catelogs/staff_management/provider/provider.dart';
+import 'package:products_catelogs/products/provider/products_management_pro.dart'
+    hide Category;
+import 'package:products_catelogs/theme/colors.dart';
+import 'package:products_catelogs/theme/widgets/app_components.dart';
+import 'package:products_catelogs/theme/widgets/reference_scaffold.dart';
 import 'package:provider/provider.dart';
 
-class AddProducts extends StatelessWidget {
+class AddProducts extends StatefulWidget {
   const AddProducts({super.key});
 
   @override
+  State<AddProducts> createState() => _AddProductsState();
+}
+
+class _AddProductsState extends State<AddProducts> {
+  final _formKey = GlobalKey<FormState>();
+  bool _isSaving = false;
+  bool _showAdvancedPrices = false;
+
+  static const List<String> _markets = ["Hyper Market", "Local Market"];
+
+  @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<StaffProvider>(context);
-    final productProvider = Provider.of<ProductProvider>(context);
-    final theme = Theme.of(context);
-    const List<String> markets = ["Hyper Market", "Local Market"];
-    bool isLoading = false;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Add Products"),
-        // backgroundColor: ,
-      ),
+    final productProvider = context.watch<ProductProvider>();
+    final categoryProvider = context.watch<CategoryProvider>();
+
+    return ReferenceScaffold(
+      title: "Add Product",
+      subtitle: "Simple and quick entry",
+      bodyPadding: EdgeInsets.zero,
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Consumer<ProductProvider>(
-                builder: (context, value, child) {
-                  return GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: value.images.isEmpty ? 1 : value.images.length,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: 1.2,
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                _buildImagesSection(context, productProvider),
+                const SizedBox(height: 16),
+                AppSectionCard(
+                  title: "Basic Details",
+                  subtitle: "Fill required product info",
+                  child: Column(
+                    children: [
+                      _buildTextField(
+                        context,
+                        controller: productProvider.nameController,
+                        label: "Product Name",
+                        icon: Iconsax.box,
+                        validator: (value) {
+                          if ((value ?? '').trim().isEmpty) {
+                            return 'Product name is required';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTextField(
+                        context,
+                        controller: productProvider.itemCodeController,
+                        label: "Item Code",
+                        icon: Iconsax.barcode,
+                        validator: (value) {
+                          if ((value ?? '').trim().isEmpty) {
+                            return 'Item code is required';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: _normalizedCategoryValue(
+                          productProvider.selectedCategory,
+                          categoryProvider.categories,
                         ),
-                    itemBuilder: (context, index) {
-                      if (value.images.isEmpty) {
-                        // show default empty card
-                        return buildStatCard(context, productProvider, null);
-                      } else {
-                        // show image card
-                        return buildStatCard(
+                        decoration: _fieldDecoration(
                           context,
-                          productProvider,
-                          value.images[index],
-                        );
-                      }
-                    },
-                  );
-                },
-              ),
-
-              SizedBox(height: 16),
-              TextField(
-                keyboardType: TextInputType.name,
-                controller: productProvider.nameController,
-                decoration: InputDecoration(
-                  labelText: "Products Name",
-                  prefixIcon: const Icon(Iconsax.box),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor, width: 2),
-                  ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red),
-                  ),
-                  focusedErrorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red, width: 2),
-                  ),
-                  errorText: provider.submitted && provider.username.isEmpty
-                      ? 'Products Name required'
-                      : null,
-                ),
-              ),
-
-              SizedBox(height: 16),
-              TextField(
-                keyboardType: TextInputType.text,
-                controller: productProvider.itemCodeController,
-                decoration: InputDecoration(
-                  labelText: "Item Code",
-                  prefixIcon: const Icon(Iconsax.box),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor, width: 2),
-                  ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red),
-                  ),
-                  focusedErrorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red, width: 2),
-                  ),
-                  errorText: provider.submitted && provider.username.isEmpty
-                      ? 'Products Name required'
-                      : null,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Consumer<CategoryProvider>(
-                builder: (context, categoryProvider, child) {
-                  final theme = Theme.of(context);
-
-                  return DropdownButtonFormField<String>(
-                    value: productProvider.selectedCategory == null
-                        ? null
-                        : productProvider.selectedCategory,
-                    decoration: InputDecoration(
-                      labelText: "Categorie",
-                      prefixIcon: const Icon(Iconsax.category_2),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide(color: theme.cardColor),
+                          label: "Category",
+                          icon: Iconsax.category_2,
+                        ),
+                        items: categoryProvider.categories
+                            .map(
+                              (category) => DropdownMenuItem(
+                                value: category.name,
+                                child: Text(category.name),
+                              ),
+                            )
+                            .toList(),
+                        validator: (value) {
+                          if ((value ?? '').trim().isEmpty) {
+                            return 'Select a category';
+                          }
+                          return null;
+                        },
+                        onChanged: (value) =>
+                            productProvider.setCategory(value?.trim()),
                       ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide(
-                          color: theme.cardColor,
-                          width: 2,
-                        ),
-                      ),
-                      errorBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: const BorderSide(color: Colors.red),
-                      ),
-                      focusedErrorBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: const BorderSide(
-                          color: Colors.red,
-                          width: 2,
-                        ),
-                      ),
-                      errorText:
-                          provider.submitted &&
-                              productProvider.selectedCategory == Null
-                          ? 'Categorie required'
-                          : null,
-                    ),
-
-                    items: categoryProvider.categories.map((cat) {
-                      return DropdownMenuItem(
-                        value: cat.name, // store id in provider
-                        child: Text(cat.name),
-                      );
-                    }).toList(),
-
-                    onChanged: (value) async {
-                      productProvider.setCategory(value ?? "");
-                    },
-                  );
-                },
-              ),
-
-              const SizedBox(height: 16),
-              TextField(
-                keyboardType: TextInputType.number,
-                controller: productProvider.stockController,
-                decoration: InputDecoration(
-                  labelText: "Stcok",
-                  prefixIcon: const Icon(Iconsax.code_1),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor, width: 2),
-                  ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red),
-                  ),
-                  focusedErrorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red, width: 2),
-                  ),
-                  errorText: provider.submitted && provider.username.isEmpty
-                      ? 'Stcok required'
-                      : null,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      keyboardType: TextInputType.number,
-                      controller: productProvider.priceController,
-                      decoration: InputDecoration(
-                        labelText: "price",
-                        prefixIcon: const Icon(Iconsax.dollar_circle4),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide(color: theme.cardColor),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide(
-                            color: theme.cardColor,
-                            width: 2,
-                          ),
-                        ),
-                        errorBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: const BorderSide(color: Colors.red),
-                        ),
-                        focusedErrorBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: const BorderSide(
-                            color: Colors.red,
-                            width: 2,
-                          ),
-                        ),
-                        errorText:
-                            provider.submitted && provider.username.isEmpty
-                            ? 'Price  required'
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue:
+                            _markets.contains(productProvider.selectedMarket)
+                            ? productProvider.selectedMarket
                             : null,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      keyboardType: TextInputType.text,
-                      controller: productProvider.unitController,
-                      // obscureText: provider.obscurePassword,
-                      decoration: InputDecoration(
-                        hint: Text("KG / CRN"),
-                        labelText: "Unit",
-                        prefixIcon: const Icon(Iconsax.level),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide(color: theme.cardColor),
+                        decoration: _fieldDecoration(
+                          context,
+                          label: "Market",
+                          icon: Iconsax.safe_home,
                         ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide(
-                            color: theme.cardColor,
-                            width: 2,
+                        items: _markets
+                            .map(
+                              (market) => DropdownMenuItem(
+                                value: market,
+                                child: Text(market),
+                              ),
+                            )
+                            .toList(),
+                        validator: (value) {
+                          if ((value ?? '').trim().isEmpty) {
+                            return 'Select a market';
+                          }
+                          return null;
+                        },
+                        onChanged: (value) =>
+                            productProvider.setMarket(value?.trim()),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildTextField(
+                              context,
+                              controller: productProvider.priceController,
+                              label: "Base Price",
+                              icon: Iconsax.dollar_circle,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              validator: (value) {
+                                if ((value ?? '').trim().isEmpty) {
+                                  return 'Required';
+                                }
+                                if (double.tryParse(value!.trim()) == null) {
+                                  return 'Invalid';
+                                }
+                                return null;
+                              },
+                            ),
                           ),
-                        ),
-                        errorBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: const BorderSide(color: Colors.red),
-                        ),
-                        focusedErrorBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: const BorderSide(
-                            color: Colors.red,
-                            width: 2,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _buildTextField(
+                              context,
+                              controller: productProvider.stockController,
+                              label: "Stock",
+                              icon: Iconsax.archive,
+                              keyboardType: TextInputType.number,
+                              validator: (value) {
+                                if ((value ?? '').trim().isEmpty) {
+                                  return 'Required';
+                                }
+                                if (int.tryParse(value!.trim()) == null) {
+                                  return 'Invalid';
+                                }
+                                return null;
+                              },
+                            ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTextField(
+                        context,
+                        controller: productProvider.unitController,
+                        label: "Unit (KG / CTN / PCS)",
+                        icon: Iconsax.weight,
+                        validator: (value) {
+                          if ((value ?? '').trim().isEmpty) {
+                            return 'Unit is required';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTextField(
+                        context,
+                        controller: productProvider.descriptionController,
+                        label: "Description (Optional)",
+                        icon: Iconsax.note,
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: Theme.of(context).dividerColor,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        errorText:
-                            provider.submitted && provider.username.isEmpty
-                            ? 'Unit required'
-                            : null,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Consumer<ProductProvider>(
-                builder: (context, productProvider, child) {
-                  final theme = Theme.of(context);
-                  return DropdownButtonFormField<String>(
-                    value: productProvider.selectedMarket ?? null,
-                    decoration: InputDecoration(
-                      labelText: "Market",
-                      prefixIcon: const Icon(Iconsax.safe_home),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide(color: theme.cardColor),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide(
-                          color: theme.cardColor,
-                          width: 2,
+                        child: SwitchListTile.adaptive(
+                          value: _showAdvancedPrices,
+                          onChanged: (value) {
+                            setState(() => _showAdvancedPrices = value);
+                          },
+                          title: const Text("Use Different Unit Prices"),
+                          subtitle: const Text("CTN, KG, PCS and Hyper Market"),
+                          activeThumbColor: Theme.of(
+                            context,
+                          ).colorScheme.primary,
                         ),
                       ),
-                      errorBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: const BorderSide(color: Colors.red),
-                      ),
-                      focusedErrorBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: const BorderSide(
-                          color: Colors.red,
-                          width: 2,
-                        ),
-                      ),
-                      errorText:
-                          provider.submitted &&
-                              productProvider.selectedMarket == null
-                          ? 'Market required'
-                          : null,
-                    ),
-                    items: markets.map((market) {
-                      return DropdownMenuItem(
-                        value: market,
-                        child: Text(market),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      productProvider.setMarket(value ?? "");
-                      log(value!);
-                    },
-                  );
-                },
-              ),
-              SizedBox(height: 16),
-              TextField(
-                keyboardType: TextInputType.number,
-                controller: productProvider.hypermarketController,
-                decoration: InputDecoration(
-                  labelText: "Hyper Market Price",
-                  prefixIcon: const Icon(Iconsax.box),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor, width: 2),
-                  ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red),
-                  ),
-                  focusedErrorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red, width: 2),
-                  ),
-                  errorText: provider.submitted && provider.username.isEmpty
-                      ? 'Hyper Market Price required'
-                      : null,
-                ),
-              ),
-
-              const SizedBox(height: 16),
-              TextField(
-                keyboardType: TextInputType.text,
-                controller: productProvider.kgPriceController,
-                decoration: InputDecoration(
-                  labelText: "Kg price",
-                  prefixIcon: const Icon(Iconsax.weight),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor, width: 2),
-                  ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red),
-                  ),
-                  focusedErrorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red, width: 2),
-                  ),
-                  errorText: provider.submitted && provider.username.isEmpty
-                      ? 'KG price required'
-                      : null,
-                ),
-              ),
-
-              const SizedBox(height: 16),
-              TextField(
-                keyboardType: TextInputType.number,
-                controller: productProvider.ctnPriceController,
-                decoration: InputDecoration(
-                  labelText: "Ctn price",
-                  prefixIcon: const Icon(Iconsax.box),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor, width: 2),
-                  ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red),
-                  ),
-                  focusedErrorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red, width: 2),
-                  ),
-                  errorText: provider.submitted && provider.username.isEmpty
-                      ? 'Ctn required'
-                      : null,
-                ),
-              ),
-
-              const SizedBox(height: 16),
-              TextField(
-                keyboardType: TextInputType.number,
-                controller: productProvider.pcsPriceController,
-                decoration: InputDecoration(
-                  labelText: "Pcs",
-                  prefixIcon: const Icon(Iconsax.paperclip),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: theme.cardColor, width: 2),
-                  ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red),
-                  ),
-                  focusedErrorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: const BorderSide(color: Colors.red, width: 2),
-                  ),
-                  errorText: provider.submitted && provider.username.isEmpty
-                      ? 'Pcs required'
-                      : null,
-                ),
-              ),
-
-              SizedBox(height: 16),
-
-              // Add this inside your build method, above Scaffold
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: StatefulBuilder(
-                  builder: (context, setState) {
-                    return ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green.shade700,
-                      ),
-                      onPressed: isLoading
-                          ? null
-                          : () async {
-                              setState(() => isLoading = true);
-
-                              final hyperPrice =
-                                  double.tryParse(
-                                    productProvider.hypermarketController.text
-                                        .trim(),
-                                  ) ??
-                                  0;
-                              final name = productProvider.nameController.text
-                                  .trim();
-                              final itemcode = productProvider
-                                  .itemCodeController
-                                  .text
-                                  .trim();
-                              final price =
-                                  double.tryParse(
-                                    productProvider.priceController.text.trim(),
-                                  ) ??
-                                  0;
-                              final stock =
-                                  int.tryParse(
-                                    productProvider.stockController.text.trim(),
-                                  ) ??
-                                  0;
-                              final unit = productProvider.unitController.text
-                                  .trim();
-                              final market =
-                                  productProvider.selectedMarket ?? "";
-                              final description = productProvider
-                                  .descriptionController
-                                  .text
-                                  .trim();
-                              final categoryId =
-                                  productProvider.selectedCategory ?? '';
-                              final images =
-                                  productProvider.images; // base64 / File list
-
-                              final kgPrice =
-                                  double.tryParse(
-                                    productProvider.kgPriceController.text,
-                                  ) ??
-                                  0;
-                              final ctnPrice =
-                                  double.tryParse(
-                                    productProvider.ctnPriceController.text,
-                                  ) ??
-                                  0;
-                              final pcsPrice =
-                                  double.tryParse(
-                                    productProvider.pcsPriceController.text,
-                                  ) ??
-                                  0;
-
-                              if (name.isEmpty ||
-                                  unit.isEmpty ||
-                                  categoryId.isEmpty) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Please fill all required fields',
+                      AnimatedCrossFade(
+                        firstChild: const SizedBox.shrink(),
+                        secondChild: Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildTextField(
+                                      context,
+                                      controller:
+                                          productProvider.hypermarketController,
+                                      label: "Hyper Market",
+                                      icon: Iconsax.shop,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
                                     ),
                                   ),
-                                );
-                                setState(() => isLoading = false);
-                                return;
-                              }
-
-                              final product = Product(
-                                images: [],
-                                itemCode: itemcode,
-                                market: market,
-                                id: DateTime.now().microsecondsSinceEpoch
-                                    .toString(),
-                                name: name,
-                                price: price,
-                                unit: unit,
-                                stock: stock,
-                                description: description,
-                                categoryId: categoryId,
-                                hyperMarket: hyperPrice,
-                                pcsPrice: pcsPrice,
-                                kgPrice: kgPrice,
-                                ctrPrice: ctnPrice,
-                              );
-
-                              try {
-                                await productProvider.addProduct(
-                                  product,
-                                  images,
-                                );
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Product Added Successfully'),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _buildTextField(
+                                      context,
+                                      controller:
+                                          productProvider.ctnPriceController,
+                                      label: "CTN Price",
+                                      icon: Iconsax.box,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                    ),
                                   ),
-                                );
-
-                                productProvider.resetForm();
-                                Navigator.pop(context);
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Failed to add product: $e'),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildTextField(
+                                      context,
+                                      controller:
+                                          productProvider.kgPriceController,
+                                      label: "KG Price",
+                                      icon: Iconsax.weight,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                    ),
                                   ),
-                                );
-                              } finally {
-                                setState(() => isLoading = false);
-                              }
-                            },
-                      child: isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text(
-                              "Add Product",
-                              style: TextStyle(fontSize: 18),
-                            ),
-                    );
-                  },
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _buildTextField(
+                                      context,
+                                      controller:
+                                          productProvider.pcsPriceController,
+                                      label: "PCS Price",
+                                      icon: Iconsax.hierarchy_3,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        crossFadeState: _showAdvancedPrices
+                            ? CrossFadeState.showSecond
+                            : CrossFadeState.showFirst,
+                        duration: const Duration(milliseconds: 180),
+                      ),
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _isSaving
+                              ? null
+                              : () => _submit(
+                                  context,
+                                  productProvider,
+                                  categoryProvider.categories,
+                                ),
+                          child: _isSaving
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text("Add Product"),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              SizedBox(height: 40),
-            ],
+                const SizedBox(height: 32),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget buildStatCard(
+  Widget _buildImagesSection(
     BuildContext context,
     ProductProvider productProvider,
-    File? image,
+  ) {
+    final images = productProvider.images;
+
+    return AppSectionCard(
+      title: "Product Photos",
+      subtitle: "Tap + to add image",
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: images.length + 1,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 1,
+        ),
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return _buildAddImageTile(context, productProvider);
+          }
+          final image = images[index - 1];
+          return _buildImageTile(
+            context,
+            image,
+            onRemove: () => productProvider.removeImageAt(index - 1),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildAddImageTile(
+    BuildContext context,
+    ProductProvider productProvider,
   ) {
     final theme = Theme.of(context);
-
     return InkWell(
-      onTap: () {
-        showModalBottomSheet(
-          showDragHandle: true,
-          context: context,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          builder: (BuildContext context) {
-            return Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min, // Makes it fit content
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  InkWell(
-                    onTap: () {
-                      productProvider.pickImageFromCamera();
-                    },
-                    child: Container(
-                      height: 40,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Icon(Iconsax.camera),
-                            SizedBox(width: 10),
-                            Text("Take Photo"),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  InkWell(
-                    onTap: () {
-                      productProvider.pickMultipleImages();
-                    },
-                    child: Container(
-                      height: 40,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Icon(Iconsax.gallery),
-                            SizedBox(width: 10),
-                            Text("Take Photo From Library"),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: 20),
-                ],
-              ),
-            );
-          },
-        );
-      },
+      onTap: () => _showImageSourceSheet(context, productProvider),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         decoration: BoxDecoration(
           color: theme.cardColor,
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: theme.dividerColor),
         ),
-        child: image == null
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Iconsax.image5),
-                    SizedBox(height: 10),
-                    Text(
-                      "Tap to add Photos",
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              )
-            : ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.file(image),
-                    ),
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: InkWell(
-                        onTap: () {
-                          productProvider.removeImage(image);
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                          ),
-                          padding: const EdgeInsets.all(4),
-                          child: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(Iconsax.add_square, color: AppColors.brandRed),
+            SizedBox(height: 6),
+            Text('Add'),
+          ],
+        ),
       ),
     );
+  }
+
+  Widget _buildImageTile(
+    BuildContext context,
+    dynamic image, {
+    required VoidCallback onRemove,
+  }) {
+    Widget imageWidget;
+    if (image is File) {
+      imageWidget = Image.file(image, fit: BoxFit.cover);
+    } else if (image is String) {
+      imageWidget = Image.network(
+        image,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(Iconsax.image),
+      );
+    } else {
+      imageWidget = const Icon(Iconsax.image);
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          imageWidget,
+          Positioned(
+            top: 4,
+            right: 4,
+            child: InkWell(
+              onTap: onRemove,
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.close, color: Colors.white, size: 16),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showImageSourceSheet(
+    BuildContext context,
+    ProductProvider productProvider,
+  ) {
+    return showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: AppSectionCard(
+              title: "Add Photo",
+              subtitle: "Choose image source",
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AppInfoTile(
+                    icon: Iconsax.camera,
+                    title: "Camera",
+                    subtitle: "Take a new photo",
+                    onTap: () async {
+                      await productProvider.pickImageFromCamera();
+                      if (sheetContext.mounted) Navigator.pop(sheetContext);
+                    },
+                  ),
+                  AppInfoTile(
+                    icon: Iconsax.gallery,
+                    title: "Gallery",
+                    subtitle: "Pick one or more images",
+                    onTap: () async {
+                      await productProvider.pickMultipleImages();
+                      if (sheetContext.mounted) Navigator.pop(sheetContext);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  TextFormField _buildTextField(
+    BuildContext context, {
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+    FormFieldValidator<String>? validator,
+    int maxLines = 1,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      validator: validator,
+      maxLines: maxLines,
+      decoration: _fieldDecoration(context, label: label, icon: icon),
+    );
+  }
+
+  InputDecoration _fieldDecoration(
+    BuildContext context, {
+    required String label,
+    required IconData icon,
+  }) {
+    return InputDecoration(labelText: label, prefixIcon: Icon(icon));
+  }
+
+  String? _normalizedCategoryValue(String? value, List<Category> categories) {
+    if (value == null || value.trim().isEmpty) return null;
+    for (final category in categories) {
+      if (category.name == value) return category.name;
+      if (category.id == value) return category.name;
+    }
+    return null;
+  }
+
+  double _toDouble(String value) {
+    return double.tryParse(value.trim()) ?? 0;
+  }
+
+  int _toInt(String value) {
+    return int.tryParse(value.trim()) ?? 0;
+  }
+
+  Future<void> _submit(
+    BuildContext context,
+    ProductProvider productProvider,
+    List<Category> categories,
+  ) async {
+    if (_isSaving) return;
+
+    final form = _formKey.currentState;
+    if (form == null || !form.validate()) return;
+
+    final category =
+        _normalizedCategoryValue(
+          productProvider.selectedCategory,
+          categories,
+        ) ??
+        '';
+    final market = productProvider.selectedMarket ?? '';
+
+    if (category.isEmpty || market.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select category and market')),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    final product = Product(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      name: productProvider.nameController.text.trim(),
+      itemCode: productProvider.itemCodeController.text.trim(),
+      market: market,
+      categoryId: category,
+      price: _toDouble(productProvider.priceController.text),
+      stock: _toInt(productProvider.stockController.text),
+      unit: productProvider.unitController.text.trim(),
+      description: productProvider.descriptionController.text.trim(),
+      hyperMarket: _toDouble(productProvider.hypermarketController.text),
+      kgPrice: _toDouble(productProvider.kgPriceController.text),
+      ctrPrice: _toDouble(productProvider.ctnPriceController.text),
+      pcsPrice: _toDouble(productProvider.pcsPriceController.text),
+      images: const [],
+    );
+
+    try {
+      await productProvider.addProduct(
+        product,
+        List<dynamic>.from(productProvider.images),
+      );
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Product added successfully')),
+      );
+      productProvider.resetForm();
+      Navigator.pop(context);
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to add product: $e')));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 }

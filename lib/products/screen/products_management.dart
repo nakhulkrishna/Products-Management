@@ -1,9 +1,12 @@
-import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/products/provider/products_management_pro.dart';
 import 'package:products_catelogs/products/screen/add_products.dart';
+import 'package:products_catelogs/products/screen/bulk.dart';
 import 'package:products_catelogs/products/screen/edit_products.dart';
+import 'package:products_catelogs/theme/colors.dart';
+import 'package:products_catelogs/theme/widgets/app_components.dart';
+import 'package:products_catelogs/theme/widgets/reference_scaffold.dart';
 import 'package:provider/provider.dart';
 
 class ProductsManagement extends StatefulWidget {
@@ -53,19 +56,35 @@ class _ProductsManagementState extends State<ProductsManagement> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: _buildAppBar(),
+    return ReferenceScaffold(
+      title: "Products Management",
+      subtitle: "Catalog and pricing",
+      bodyPadding: EdgeInsets.zero,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.upload_file_rounded),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const BulkProductUploadScreen(),
+              ),
+            );
+          },
+          tooltip: 'Bulk Upload',
+        ),
+        IconButton(
+          icon: const Icon(Iconsax.refresh),
+          onPressed: _refreshProducts,
+          tooltip: 'Refresh',
+        ),
+      ],
       body: RefreshIndicator(
         onRefresh: _refreshProducts,
         child: CustomScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            _buildSearchBar(),
-            _buildStatsBar(),
-            _buildProductsList(),
-          ],
+          slivers: [_buildSearchBar(), _buildStatsBar(), _buildProductsList()],
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -76,22 +95,9 @@ class _ProductsManagementState extends State<ProductsManagement> {
     );
   }
 
-  // ==================== APP BAR ====================
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      title: const Text("Products Management"),
-      actions: [
-        IconButton(
-          icon: const Icon(Iconsax.refresh),
-          onPressed: _refreshProducts,
-          tooltip: 'Refresh',
-        ),
-      ],
-    );
-  }
-
   // ==================== SEARCH BAR ====================
   Widget _buildSearchBar() {
+    final theme = Theme.of(context);
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -102,12 +108,11 @@ class _ProductsManagementState extends State<ProductsManagement> {
                 decoration: InputDecoration(
                   hintText: "Search products...",
                   prefixIcon: const Icon(Iconsax.search_normal_1),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+                  filled: true,
+                  fillColor: theme.cardColor,
+                  suffixIcon: Icon(
+                    Iconsax.command_square,
+                    color: theme.textTheme.bodySmall?.color,
                   ),
                 ),
                 onChanged: (value) {
@@ -127,9 +132,15 @@ class _ProductsManagementState extends State<ProductsManagement> {
                   ),
                   onPressed: () => _showFilterBottomSheet(context),
                   style: IconButton.styleFrom(
-                    backgroundColor: hasFilters 
-                      ? Theme.of(context).primaryColor 
-                      : null,
+                    backgroundColor: hasFilters
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).cardColor,
+                    foregroundColor: hasFilters
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.onSurface,
+                    side: hasFilters
+                        ? null
+                        : BorderSide(color: Theme.of(context).dividerColor),
                   ),
                 );
               },
@@ -142,26 +153,41 @@ class _ProductsManagementState extends State<ProductsManagement> {
 
   // ==================== STATS BAR ====================
   Widget _buildStatsBar() {
+    final theme = Theme.of(context);
     return SliverToBoxAdapter(
       child: Consumer<ProductProvider>(
         builder: (context, provider, _) {
           final total = provider.filteredProducts.length;
-          final visible = provider.filteredProducts.where((p) => !p.isHidden).length;
-          final hidden = provider.filteredProducts.where((p) => p.isHidden).length;
+          final visible = provider.filteredProducts
+              .where((p) => !p.isHidden)
+              .length;
+          final hidden = provider.filteredProducts
+              .where((p) => p.isHidden)
+              .length;
 
-          return Container(
+          return AppSectionCard(
             margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Theme.of(context).primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
+            padding: const EdgeInsets.all(14),
+            color: theme.colorScheme.primary.withAlpha(14),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildStatItem("Total", total.toString(), Iconsax.box),
-                _buildStatItem("Visible", visible.toString(), Iconsax.eye),
-                _buildStatItem("Hidden", hidden.toString(), Iconsax.eye_slash),
+                Expanded(
+                  child: _buildStatItem("Total", total.toString(), Iconsax.box),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    "Visible",
+                    visible.toString(),
+                    Iconsax.eye,
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    "Hidden",
+                    hidden.toString(),
+                    Iconsax.eye_slash,
+                  ),
+                ),
               ],
             ),
           );
@@ -171,24 +197,18 @@ class _ProductsManagementState extends State<ProductsManagement> {
   }
 
   Widget _buildStatItem(String label, String value, IconData icon) {
+    final theme = Theme.of(context);
     return Column(
       children: [
-        Icon(icon, size: 20),
+        Icon(icon, size: 18, color: theme.colorScheme.primary),
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
           ),
         ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.grey[600],
-          ),
-        ),
+        Text(label, style: theme.textTheme.bodySmall),
       ],
     );
   }
@@ -212,18 +232,15 @@ class _ProductsManagementState extends State<ProductsManagement> {
         return SliverPadding(
           padding: const EdgeInsets.all(16),
           sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                if (index == products.length) {
-                  return _buildLoadingIndicator(provider);
-                }
-                return _ProductCard(
-                  key: ValueKey(products[index].id),
-                  product: products[index],
-                );
-              },
-              childCount: products.length + 1,
-            ),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              if (index == products.length) {
+                return _buildLoadingIndicator(provider);
+              }
+              return _ProductCard(
+                key: ValueKey(products[index].id),
+                product: products[index],
+              );
+            }, childCount: products.length + 1),
           ),
         );
       },
@@ -232,22 +249,13 @@ class _ProductsManagementState extends State<ProductsManagement> {
 
   Widget _buildEmptyState() {
     return SliverFillRemaining(
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Iconsax.box, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              "No products found",
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              "Try adjusting your search or filters",
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          ],
+      child: AppEmptyState(
+        icon: Iconsax.box,
+        title: "No products found",
+        subtitle: "Try adjusting your search or category filters",
+        action: OutlinedButton(
+          onPressed: () => _navigateToAddProduct(context),
+          child: const Text("Add Product"),
         ),
       ),
     );
@@ -255,7 +263,7 @@ class _ProductsManagementState extends State<ProductsManagement> {
 
   Widget _buildLoadingIndicator(ProductProvider provider) {
     if (!provider.isLoadingMore) return const SizedBox(height: 80);
-    
+
     return const Padding(
       padding: EdgeInsets.all(16.0),
       child: Center(child: CircularProgressIndicator()),
@@ -286,10 +294,7 @@ class _ProductsManagementState extends State<ProductsManagement> {
 class _ProductCard extends StatelessWidget {
   final Product product;
 
-  const _ProductCard({
-    super.key,
-    required this.product,
-  });
+  const _ProductCard({super.key, required this.product});
 
   @override
   Widget build(BuildContext context) {
@@ -297,17 +302,16 @@ class _ProductCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: () => _navigateToEdit(context),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildProductImage(),
               const SizedBox(width: 12),
-              Expanded(
-                child: _buildProductInfo(context),
-              ),
+              Expanded(child: _buildProductInfo(context)),
+              const SizedBox(width: 4),
               _buildActionMenu(context),
             ],
           ),
@@ -317,14 +321,15 @@ class _ProductCard extends StatelessWidget {
   }
 
   Widget _buildProductImage() {
-    final hasImage = product.images.isNotEmpty && product.images.first.isNotEmpty;
+    final hasImage =
+        product.images.isNotEmpty && product.images.first.isNotEmpty;
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         width: 80,
         height: 80,
-        color: Colors.grey[200],
+        color: AppColors.lightMutedSurface,
         child: hasImage
             ? Image.network(
                 product.images.first,
@@ -350,32 +355,34 @@ class _ProductCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Product Name
         Text(
           product.name,
           style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w700,
           ),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 4),
-        
-        // Category & Status Row
+
         Row(
           children: [
             Flexible(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
-                  color: theme.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(4),
+                  color: theme.colorScheme.primary.withAlpha(14),
+                  borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
                   product.categoryId,
                   style: TextStyle(
                     fontSize: 11,
-                    color: theme.primaryColor,
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -384,69 +391,65 @@ class _ProductCard extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: product.isHidden
-                    ? Colors.red.withOpacity(0.1)
-                    : Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(4),
+                    ? Colors.red.withAlpha(22)
+                    : AppColors.success.withAlpha(24),
+                borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
                 product.isHidden ? "Hidden" : "Visible",
                 style: TextStyle(
                   fontSize: 11,
-                  color: product.isHidden ? Colors.red : Colors.green,
-                  fontWeight: FontWeight.w500,
+                  color: product.isHidden
+                      ? Colors.red.shade700
+                      : AppColors.success,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        
-        // Price Section
+
         Row(
           children: [
             Text(
-              "QR ${displayPrice.toStringAsFixed(2)}",
+              "QAR ${displayPrice.toStringAsFixed(2)}",
               style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: hasOffer ? Colors.green : theme.primaryColor,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: theme.colorScheme.primary,
               ),
             ),
             if (hasOffer && product.price != product.offerPrice) ...[
               const SizedBox(width: 8),
               Text(
-                "QR ${product.price.toStringAsFixed(2)}",
-                style: const TextStyle(
+                "QAR ${product.price.toStringAsFixed(2)}",
+                style: TextStyle(
                   fontSize: 12,
                   decoration: TextDecoration.lineThrough,
-                  color: Colors.grey,
+                  color: theme.textTheme.bodySmall?.color,
                 ),
               ),
             ],
           ],
         ),
-        
-        // Stock Warning
+
         if (product.stock <= 10)
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Row(
               children: [
-                Icon(
-                  Iconsax.warning_2,
-                  size: 14,
-                  color: Colors.orange[700],
-                ),
+                Icon(Iconsax.warning_2, size: 14, color: AppColors.warning),
                 const SizedBox(width: 4),
                 Text(
                   "Low stock (${product.stock})",
                   style: TextStyle(
                     fontSize: 11,
-                    color: Colors.orange[700],
-                    fontWeight: FontWeight.w500,
+                    color: AppColors.warning,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -458,7 +461,7 @@ class _ProductCard extends StatelessWidget {
 
   Widget _buildActionMenu(BuildContext context) {
     return PopupMenuButton<String>(
-      icon: const Icon(Icons.more_vert),
+      icon: const Icon(Icons.more_vert_rounded),
       itemBuilder: (context) => [
         const PopupMenuItem(
           value: 'edit',
@@ -526,9 +529,7 @@ class _ProductCard extends StatelessWidget {
   void _navigateToEdit(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => EditProducts(product: product),
-      ),
+      MaterialPageRoute(builder: (_) => EditProducts(product: product)),
     );
   }
 
@@ -576,13 +577,11 @@ class _ProductCard extends StatelessWidget {
             onPressed: () {
               context.read<ProductProvider>().deleteProduct(product.id);
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Product deleted")),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text("Product deleted")));
             },
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             child: const Text("Delete"),
           ),
         ],
@@ -597,84 +596,81 @@ class _FilterBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Consumer<ProductProvider>(
       builder: (context, provider, _) {
-        return Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.7,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "Filter by Category",
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    if (provider.selectedFilterCategories.isNotEmpty)
-                      TextButton(
-                        onPressed: () {
-                          for (var cat in List.from(provider.selectedFilterCategories)) {
-                            provider.toggleFilterCategory(cat);
-                          }
-                        },
-                        child: const Text("Clear All"),
-                      ),
-                  ],
-                ),
-              ),
-              
-              const Divider(height: 1),
-              
-              // Categories List
-              Flexible(
-                child: provider.categories.isEmpty
-                    ? const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(32),
-                          child: Text("No categories available"),
+        return SafeArea(
+          top: false,
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.75,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Filter by Category",
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
-                      )
-                    : ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: provider.categories.length,
-                        itemBuilder: (context, index) {
-                          final category = provider.categories[index];
-                          final isSelected = provider.selectedFilterCategories
-                              .contains(category.name);
-
-                          return CheckboxListTile(
-                            title: Text(category.name),
-                            value: isSelected,
-                            onChanged: (_) {
-                              provider.toggleFilterCategory(category.name);
-                            },
-                          );
-                        },
                       ),
-              ),
-              
-              const Divider(height: 1),
-              
-              // Apply Button
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text("Apply Filters"),
+                      if (provider.selectedFilterCategories.isNotEmpty)
+                        TextButton(
+                          onPressed: () {
+                            for (var cat in List.from(
+                              provider.selectedFilterCategories,
+                            )) {
+                              provider.toggleFilterCategory(cat);
+                            }
+                          },
+                          child: const Text("Clear All"),
+                        ),
+                    ],
                   ),
                 ),
-              ),
-            ],
+                const Divider(height: 1),
+                Flexible(
+                  child: provider.categories.isEmpty
+                      ? const AppEmptyState(
+                          title: "No categories available",
+                          subtitle: "Create categories first to use filters",
+                        )
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: provider.categories.length,
+                          itemBuilder: (context, index) {
+                            final category = provider.categories[index];
+                            final isSelected = provider.selectedFilterCategories
+                                .contains(category.name);
+
+                            return CheckboxListTile(
+                              title: Text(category.name),
+                              value: isSelected,
+                              onChanged: (_) {
+                                provider.toggleFilterCategory(category.name);
+                              },
+                            );
+                          },
+                        ),
+                ),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("Apply Filters"),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -716,76 +712,68 @@ class _PriceEditBottomSheetState extends State<_PriceEditBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Update Prices",
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            widget.product.name,
-            style: TextStyle(color: Colors.grey[600]),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 20),
-          
-          TextField(
-            controller: _offerPriceController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: "Offer Price",
-              prefixIcon: const Icon(Iconsax.tag),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          TextField(
-            controller: _hypermarketPriceController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: "Hypermarket Price",
-              prefixIcon: const Icon(Iconsax.shop),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          
-          Row(
+    final theme = Theme.of(context);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 10,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: AppSectionCard(
+          title: "Update Prices",
+          subtitle: widget.product.name,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("Cancel"),
+              TextField(
+                controller: _offerPriceController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: "Offer Price",
+                  prefixIcon: Icon(Iconsax.tag),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: () => _savePrices(context),
-                  child: const Text("Save"),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _hypermarketPriceController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
                 ),
+                decoration: const InputDecoration(
+                  labelText: "Hypermarket Price",
+                  prefixIcon: Icon(Iconsax.shop),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: theme.dividerColor),
+                      ),
+                      child: const Text("Cancel"),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => _savePrices(context),
+                      child: const Text("Save"),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -795,17 +783,17 @@ class _PriceEditBottomSheetState extends State<_PriceEditBottomSheet> {
     final hyperPrice = double.tryParse(_hypermarketPriceController.text);
 
     final provider = context.read<ProductProvider>();
-    
+
     if (offerPrice != null) {
       provider.setOfferPrice(widget.product, offerPrice);
     }
-    
+
     if (hyperPrice != null) {
       provider.setHyperMarketPrice(widget.product, hyperPrice);
     }
 
     Navigator.pop(context);
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Prices updated successfully")),
     );

@@ -2,17 +2,15 @@ import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
-import 'package:products_catelogs/categories/screen/add_categories.dart';
 import 'package:products_catelogs/categories/screen/categories_managment.dart';
-import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
 import 'package:products_catelogs/orders/screen/orders_screen.dart';
 import 'package:products_catelogs/products/provider/products_management_pro.dart';
 import 'package:products_catelogs/products/screen/products_management.dart';
 import 'package:products_catelogs/settings/screens/settings.dart';
 import 'package:products_catelogs/staff_management/provider/provider.dart';
 import 'package:products_catelogs/staff_management/screen/salesman_screen.dart';
-import 'package:products_catelogs/staff_management/screen/staff_management.dart';
-import 'package:products_catelogs/theme/themeprovider.dart';
+import 'package:products_catelogs/theme/widgets/app_components.dart';
+import 'package:products_catelogs/theme/widgets/reference_scaffold.dart';
 import 'package:provider/provider.dart';
 
 class DashboardScreen extends StatelessWidget {
@@ -22,61 +20,27 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: Consumer<ThemeProvider>(
-          builder: (context, themeProvider, child) {
-            return IconButton(
-              onPressed: () {
-                themeProvider.toggleTheme();
-              },
-              icon: Icon(
-                themeProvider.isDarkMode ? Iconsax.sun_1 : Iconsax.moon,
-              ),
+    return ReferenceScaffold(
+      title: "Dashboard",
+      subtitle: "Welcome back",
+      showBackButton: false,
+      actions: [
+        IconButton(
+          icon: const Icon(Iconsax.setting),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const Settings()),
             );
           },
         ),
-
-        surfaceTintColor: Colors.transparent,
-        toolbarHeight: 80,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text("Welcome back!", style: theme.textTheme.bodySmall),
-            const SizedBox(height: 4),
-            Text(
-              "JABIR",
-              style: theme.textTheme.bodyLarge?.copyWith(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Iconsax.setting, color: theme.iconTheme.color),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => Settings()),
-              );
-            },
-          ),
-        ],
-      ),
+      ],
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Balance Card
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(16),
-              ),
+            AppSectionCard(
+              color: theme.colorScheme.primary.withAlpha(18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -91,20 +55,13 @@ class DashboardScreen extends StatelessWidget {
                         ),
                       ),
                       const Spacer(),
-                      // Text(
-                      //   "See details",
-                      //   style: theme.textTheme.bodyMedium?.copyWith(
-                      //     color: theme.colorScheme.primary,
-                      //     fontWeight: FontWeight.w500,
-                      //   ),
-                      // ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   Consumer<ProductProvider>(
                     builder: (context, value, child) {
                       return Text(
-                        "\u20B9${value.totalOrderValue.toStringAsFixed(2)}",
+                        "QAR ${value.totalOrderValue.toStringAsFixed(2)}",
                         style: TextStyle(
                           color: theme.colorScheme.primary,
                           fontSize: 28,
@@ -116,10 +73,7 @@ class DashboardScreen extends StatelessWidget {
                 ],
               ),
             ),
-
             const SizedBox(height: 20),
-
-            // Stats
             Consumer2<ProductProvider, StaffProvider>(
               builder: (context, value, staff, child) {
                 return GridView.count(
@@ -129,7 +83,6 @@ class DashboardScreen extends StatelessWidget {
                   mainAxisSpacing: 15,
                   physics: const NeverScrollableScrollPhysics(),
                   children: [
-                    // Navigate to ProductsScreen
                     GestureDetector(
                       onTap: () {
                         Navigator.push(
@@ -144,6 +97,10 @@ class DashboardScreen extends StatelessWidget {
                         Iconsax.box,
                         "Products",
                         "${value.products.length}",
+                        backgroundColor: Color.alphaBlend(
+                          theme.colorScheme.primary.withAlpha(18),
+                          theme.cardColor,
+                        ),
                       ),
                     ),
                     GestureDetector(
@@ -160,6 +117,10 @@ class DashboardScreen extends StatelessWidget {
                         Iconsax.shopping_cart,
                         "Total Orders",
                         "${value.orders.length}",
+                        backgroundColor: Color.alphaBlend(
+                          theme.colorScheme.primary.withAlpha(28),
+                          theme.cardColor,
+                        ),
                       ),
                     ),
                     GestureDetector(
@@ -167,7 +128,7 @@ class DashboardScreen extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => CategoriesManagment(),
+                            builder: (context) => const CategoriesManagment(),
                           ),
                         );
                       },
@@ -176,9 +137,12 @@ class DashboardScreen extends StatelessWidget {
                         Iconsax.category,
                         "Categories",
                         "${value.categories.length}",
+                        backgroundColor: Color.alphaBlend(
+                          theme.colorScheme.primary.withAlpha(38),
+                          theme.cardColor,
+                        ),
                       ),
                     ),
-
                     GestureDetector(
                       onTap: () {
                         Navigator.push(
@@ -193,58 +157,42 @@ class DashboardScreen extends StatelessWidget {
                         Iconsax.people,
                         "Sales Man",
                         "${staff.staffList.length}",
+                        backgroundColor: Color.alphaBlend(
+                          theme.colorScheme.primary.withAlpha(48),
+                          theme.cardColor,
+                        ),
                       ),
                     ),
                   ],
                 );
               },
             ),
-
             const SizedBox(height: 20),
-
-            Text(
-              "Recent Orders",
-              style: theme.textTheme.bodyLarge?.copyWith(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
             Consumer<ProductProvider>(
               builder: (context, value, child) {
                 if (value.orders.isEmpty) {
-                  return Center(
-                    child: Column(
-                      children: [
-                        SizedBox(height: 40),
-                        Image.asset(
-                          'asstes/Image.png',
-                          width: 200,
-                          height: 200,
-                          fit: BoxFit.contain,
-                        ),
-                        SizedBox(height: 16),
-                        Text(
-                          "No orders yet",
-                          style: Theme.of(context).textTheme.bodyLarge
-                              ?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                        ),
-                      ],
-                    ),
+                  return const AppEmptyState(
+                    assetPath: 'asstes/Image.png',
+                    title: "No recent orders",
+                    subtitle:
+                        "Orders will appear here after customers place them",
                   );
-                } else {
-                  return ListView.builder(
+                }
+
+                final visibleOrders = value.orders.length > 8
+                    ? value.orders.take(8).toList()
+                    : value.orders;
+
+                return AppSectionCard(
+                  title: "Recent Orders",
+                  subtitle: "Latest ${visibleOrders.length} entries",
+                  child: ListView.builder(
                     shrinkWrap: true,
-                    physics: NeverScrollableScrollPhysics(),
-                    itemCount: value.orders.length > 8
-                        ? 8
-                        : value.orders.length,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: visibleOrders.length,
                     itemBuilder: (context, index) {
-                      final orders = value.orders[index];
-                      String formattedDate = orders.timestamp != null
+                      final orders = visibleOrders[index];
+                      final formattedDate = orders.timestamp != null
                           ? DateFormat('d MMM yyyy').format(orders.timestamp!)
                           : '';
                       return buildTransaction(
@@ -254,8 +202,8 @@ class DashboardScreen extends StatelessWidget {
                         orders.total.toString(),
                       );
                     },
-                  );
-                }
+                  ),
+                );
               },
             ),
           ],
@@ -268,14 +216,15 @@ class DashboardScreen extends StatelessWidget {
     BuildContext context,
     IconData icon,
     String title,
-    String value,
-  ) {
+    String value, {
+    Color? backgroundColor,
+  }) {
     final theme = Theme.of(context);
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.cardColor,
+        color: backgroundColor ?? theme.cardColor,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -308,18 +257,18 @@ class DashboardScreen extends StatelessWidget {
   ) {
     final theme = Theme.of(context);
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
+        color: theme.colorScheme.primary.withAlpha(12),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 24,
-            backgroundColor: theme.primaryColor,
-            child: const Icon(Iconsax.box, color: Colors.white),
+            radius: 21,
+            backgroundColor: theme.colorScheme.primary.withAlpha(28),
+            child: Icon(Iconsax.box, color: theme.colorScheme.primary),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -330,7 +279,7 @@ class DashboardScreen extends StatelessWidget {
                   name,
                   style: theme.textTheme.bodyLarge?.copyWith(
                     fontWeight: FontWeight.w600,
-                    fontSize: 16,
+                    fontSize: 15,
                   ),
                 ),
                 Text(date, style: theme.textTheme.bodySmall),
@@ -340,14 +289,14 @@ class DashboardScreen extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text(
-                "Ordered",
+              Text(
+                "Total",
                 style: TextStyle(
-                  color: Colors.green,
+                  color: theme.colorScheme.primary,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              Text(txnId, style: theme.textTheme.bodySmall),
+              Text("QAR $txnId", style: theme.textTheme.bodySmall),
             ],
           ),
         ],

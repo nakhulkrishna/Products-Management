@@ -1,626 +1,761 @@
-// // Add these dependencies to pubspec.yaml:
-// // dependencies:
-// //   file_picker: ^8.0.0
-// //   archive: ^3.4.0
-// //   excel: ^4.0.0
-// //   path_provider: ^2.1.0
+import 'dart:io';
 
-// import 'dart:convert';
-// import 'dart:developer';
-// import 'dart:io';
-// import 'package:flutter/material.dart';
-// import 'package:file_picker/file_picker.dart';
-// import 'package:archive/archive.dart';
-// import 'package:excel/excel.dart';
-// import 'package:path_provider/path_provider.dart';
+import 'package:archive/archive.dart';
+import 'package:excel/excel.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:iconsax/iconsax.dart';
+import 'package:products_catelogs/products/provider/products_management_pro.dart';
+import 'package:products_catelogs/theme/widgets/app_components.dart';
+import 'package:products_catelogs/theme/widgets/reference_scaffold.dart';
+import 'package:provider/provider.dart';
 
+class BulkProductUploadScreen extends StatefulWidget {
+  const BulkProductUploadScreen({super.key});
 
-// class BulkProductUploadScreen extends StatefulWidget {
-//   @override
-//   _BulkProductUploadScreenState createState() => _BulkProductUploadScreenState();
-// }
+  @override
+  State<BulkProductUploadScreen> createState() =>
+      _BulkProductUploadScreenState();
+}
 
-// class _BulkProductUploadScreenState extends State<BulkProductUploadScreen> {
-//   bool isProcessing = false;
-//   String statusMessage = '';
-//   List<ProductData> processedProducts = [];
-//   int uploadedCount = 0;
+class _BulkProductUploadScreenState extends State<BulkProductUploadScreen> {
+  bool _isParsing = false;
+  bool _isUploading = false;
+  String _statusMessage =
+      "Select a ZIP file that contains one Excel file and an images folder.";
+  String? _selectedFileName;
 
-// Future<void> pickAndProcessZipOrCsvXlsxFile() async {
-//   try {
-//     setState(() {
-//       isProcessing = true;
-//       statusMessage = 'Selecting file...';
-//     });
+  int _uploadedCount = 0;
+  final List<_BulkUploadRow> _rows = [];
+  final List<String> _parseIssues = [];
+  final List<String> _uploadIssues = [];
 
-//     FilePickerResult? result = await FilePicker.platform.pickFiles(
-//       type: FileType.custom,
-//       allowedExtensions: ['zip', 'csv', 'xlsx', 'xls'],
-//     );
+  Directory? _workingDirectory;
 
-//     if (result == null) {
-//       setState(() {
-//         isProcessing = false;
-//         statusMessage = 'No file selected';
-//       });
-//       return;
-//     }
+  @override
+  void dispose() {
+    _cleanupWorkingDirectory();
+    super.dispose();
+  }
 
-//     final file = File(result.files.single.path!);
-//     final ext = file.path.split('.').last.toLowerCase();
+  @override
+  Widget build(BuildContext context) {
+    final canUpload = _rows.isNotEmpty && !_isParsing && !_isUploading;
+    final uploadProgress = _rows.isEmpty ? 0.0 : _uploadedCount / _rows.length;
 
-//     // 📌 Direct CSV/XLSX without ZIP
-//     if (ext == 'csv') {
-//       setState(() => statusMessage = 'Processing CSV file...');
-//       final products = await _processCsvFile(file);
-//       setState(() {
-//         processedProducts = products;
-//         isProcessing = false;
-//         statusMessage = '✅ Successfully read ${products.length} products from CSV!';
-//       });
-//       _showSuccessDialog(products);
-//       return;
-//     }
+    return ReferenceScaffold(
+      title: "Bulk Upload",
+      subtitle: "Excel + images in one ZIP",
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            AppSectionCard(
+              title: "How to Prepare ZIP",
+              subtitle: "Folder structure expected",
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text("1. Create one Excel file (.xlsx or .xls)."),
+                  SizedBox(height: 4),
+                  Text("2. Add an images folder with product images."),
+                  SizedBox(height: 4),
+                  Text("3. In Excel, keep image names in the images column."),
+                  SizedBox(height: 4),
+                  Text("4. ZIP the full folder and upload that ZIP."),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            AppSectionCard(
+              title: "Actions",
+              subtitle: _selectedFileName ?? "No file selected",
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _isParsing || _isUploading
+                          ? null
+                          : _pickAndParseZip,
+                      icon: const Icon(Iconsax.folder_open),
+                      label: Text(
+                        _isParsing ? "Parsing..." : "Select ZIP File",
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: canUpload ? _uploadAllProducts : null,
+                      icon: const Icon(Iconsax.document_upload),
+                      label: const Text("Upload All Products"),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    _statusMessage,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  if (_isUploading) ...[
+                    const SizedBox(height: 10),
+                    LinearProgressIndicator(value: uploadProgress),
+                    const SizedBox(height: 6),
+                    Text(
+                      "Uploaded $_uploadedCount / ${_rows.length}",
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            AppSectionCard(
+              title: "Summary",
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _summaryTile(
+                      context,
+                      title: "Ready",
+                      value: _rows.length.toString(),
+                      icon: Iconsax.box,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _summaryTile(
+                      context,
+                      title: "Parse Issues",
+                      value: _parseIssues.length.toString(),
+                      icon: Iconsax.warning_2,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _summaryTile(
+                      context,
+                      title: "Upload Issues",
+                      value: _uploadIssues.length.toString(),
+                      icon: Iconsax.info_circle,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_parseIssues.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              AppSectionCard(
+                title: "Parse Issues",
+                subtitle: "Fix these rows in Excel and upload again",
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: _parseIssues
+                      .take(20)
+                      .map(
+                        (issue) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Text("- $issue"),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ],
+            if (_uploadIssues.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              AppSectionCard(
+                title: "Upload Issues",
+                subtitle: "Rows that failed during upload",
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: _uploadIssues
+                      .take(20)
+                      .map(
+                        (issue) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Text("- $issue"),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ],
+            if (_rows.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              AppSectionCard(
+                title: "Preview",
+                subtitle: "First ${_rows.length > 10 ? 10 : _rows.length} rows",
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _rows.length > 10 ? 10 : _rows.length,
+                  itemBuilder: (context, index) {
+                    final row = _rows[index];
+                    return AppInfoTile(
+                      icon: Iconsax.box,
+                      title: row.name,
+                      subtitle:
+                          "Row ${row.rowNumber} • ${row.itemCode} • ${row.imageFiles.length} images",
+                      margin: const EdgeInsets.only(bottom: 8),
+                      trailing: Text(
+                        "QAR ${row.price.toStringAsFixed(2)}",
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
 
-//     if (ext == 'xlsx' || ext == 'xls') {
-//       setState(() => statusMessage = 'Processing Excel file...');
-//       final products = await _processExcelOnly(file);
-//       setState(() {
-//         processedProducts = products;
-//         isProcessing = false;
-//         statusMessage = '✅ Successfully read ${products.length} products from Excel!';
-//       });
-//       _showSuccessDialog(products);
-//       return;
-//     }
+  Widget _summaryTile(
+    BuildContext context, {
+    required String title,
+    required String value,
+    required IconData icon,
+  }) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withAlpha(10),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 16, color: theme.colorScheme.primary),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          Text(
+            title,
+            style: theme.textTheme.bodySmall,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
 
-//     // 📌 If ZIP
-//     if (ext == 'zip') {
-//       setState(() => statusMessage = 'Extracting ZIP file...');
-//       final bytes = await file.readAsBytes();
-//       final archive = ZipDecoder().decodeBytes(bytes);
+  Future<void> _pickAndParseZip() async {
+    FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['zip'],
+      );
+    } on MissingPluginException {
+      if (!mounted) return;
+      const message =
+          'File picker plugin is not loaded yet. Please stop the app and run it again (full restart).';
+      setState(() => _statusMessage = message);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Plugin not loaded. Do a full restart (stop + run), not hot restart.',
+          ),
+        ),
+      );
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _statusMessage = 'File pick failed: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('File pick failed: $e')));
+      return;
+    }
 
-//       final tempDir = await getTemporaryDirectory();
-//       final extractPath = '${tempDir.path}/bulk_${DateTime.now().millisecondsSinceEpoch}';
-//       Directory(extractPath).createSync(recursive: true);
+    if (result == null || result.files.single.path == null) return;
 
-//       Map<String, File> extractedImages = {};
-//       File? csvFile;
-//       File? excelFile;
+    final zipPath = result.files.single.path!;
+    final zipName = result.files.single.name;
 
-//       for (final f in archive) {
-//         if (f.isFile) {
-//           final data = f.content as List<int>;
-//           final outFile = File('$extractPath/${f.name}')..createSync(recursive: true)
-//             ..writeAsBytesSync(data);
+    setState(() {
+      _isParsing = true;
+      _selectedFileName = zipName;
+      _rows.clear();
+      _parseIssues.clear();
+      _uploadIssues.clear();
+      _uploadedCount = 0;
+      _statusMessage = "Reading ZIP and parsing Excel...";
+    });
 
-//           if (f.name.toLowerCase().endsWith('.csv')) {
-//             csvFile = outFile;
-//           }
-//           if (f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls')) {
-//             excelFile = outFile;
-//           }
-//           if (f.name.contains('images/') &&
-//               (f.name.endsWith('.jpg') || f.name.endsWith('.jpeg') || f.name.endsWith('.png'))) {
-//             final imgName = f.name.split('/').last;
-//             extractedImages[imgName] = outFile;
-//           }
-//         }
-//       }
+    try {
+      _cleanupWorkingDirectory();
+      _workingDirectory = await Directory.systemTemp.createTemp('bulk_upload_');
 
-//       if (csvFile == null && excelFile == null) {
-//         throw Exception('❌ No CSV or Excel file found inside ZIP!');
-//       }
+      final zipFile = File(zipPath);
+      final bytes = await zipFile.readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
 
-//       List<ProductData> products = [];
-//       if (csvFile != null) {
-//         setState(() => statusMessage = 'Processing CSV in ZIP...');
-//         products = await _processCsvFile(csvFile, imageMap: extractedImages);
-//       } else if (excelFile != null) {
-//         setState(() => statusMessage = 'Processing Excel in ZIP...');
-//         products = await _processExcelFile(excelFile, extractedImages);
-//       }
+      File? excelFile;
+      final imagePool = <String, File>{};
 
-//       setState(() {
-//         processedProducts = products;
-//         isProcessing = false;
-//         statusMessage = '✅ Successfully processed ${products.length} ZIP products!';
-//       });
-//       _showSuccessDialog(products);
-//     }
+      for (final entry in archive) {
+        if (!entry.isFile) continue;
 
-//   } catch (e) {
-//     setState(() {
-//       isProcessing = false;
-//       statusMessage = 'Error: ${e.toString()}';
-//     });
+        final outFile = File('${_workingDirectory!.path}/${entry.name}');
+        outFile.parent.createSync(recursive: true);
+        outFile.writeAsBytesSync(entry.content as List<int>);
 
-// log(e.toString());
-//     ScaffoldMessenger.of(context).showSnackBar(
-//       SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
-//     );
+        final lower = entry.name.toLowerCase();
+        if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
+          excelFile ??= outFile;
+        }
 
+        if (_isImageFile(lower)) {
+          imagePool[_baseName(entry.name).toLowerCase()] = outFile;
+        }
+      }
 
-//   }
-// }
-// Future<List<ProductData>> _processCsvFile(File csvFile, {Map<String, File>? imageMap}) async {
-//   final images = imageMap ?? {};
-//   List<ProductData> products = [];
+      if (excelFile == null) {
+        throw Exception('No Excel file (.xlsx or .xls) found inside ZIP.');
+      }
 
-//   final bytes = await csvFile.readAsBytes();
-  
-//   // ✅ Try UTF-8, if fails use Latin1 (Excel sometimes saves CSV this way)
-//   List<String> lines;
-//   try {
-//     lines = utf8.decode(bytes).split('\n');
-//   } catch (_) {
-//     log("⚠ UTF-8 failed, trying Latin1 decode...");
-//     lines = latin1.decode(bytes).split('\n');
-//   }
+      final parsed = _parseExcel(excelFile, imagePool);
 
-//   for (int i = 1; i < lines.length; i++) {
-//     final row = lines[i].split(',');
-//     if (row.length < 9) continue;
+      if (!mounted) return;
+      setState(() {
+        _rows
+          ..clear()
+          ..addAll(parsed.rows);
+        _parseIssues
+          ..clear()
+          ..addAll(parsed.issues);
+        _statusMessage =
+            'Parsed ${parsed.rows.length} rows. Issues: ${parsed.issues.length}';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _statusMessage = 'Parse failed: $e';
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Parse failed: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isParsing = false);
+      }
+    }
+  }
 
-//     products.add(ProductData(
-//       itemCode: row[0],
-//       market: row[1],
-//       name: row[2],
-//       price: double.tryParse(row[3]) ?? 0,
-//       offerPrice: row[4].isNotEmpty ? double.tryParse(row[4]) : null,
-//       unit: row[5],
-//       stock: int.tryParse(row[6]) ?? 0,
-//       description: row[7],
-//       categoryId: row[8],
-//       imageFiles: (row.length > 15)
-//           ? row[15].split(',').map((img) => images[img.trim()]).whereType<File>().toList()
-//           : [],
-//       isHidden: row.length > 14 && row[14].toLowerCase() == 'true',
-//     ));
-//   }
+  _ParsedResult _parseExcel(File excelFile, Map<String, File> imagePool) {
+    final issues = <String>[];
+    final rows = <_BulkUploadRow>[];
 
-//   return products;
-// }
-// Future<List<ProductData>> _processExcelOnly(File excelFile) async {
-//   Map<String, File> empty = {};
-//   return _processExcelFile(excelFile, empty);
-// }
+    final bytes = excelFile.readAsBytesSync();
+    final excel = Excel.decodeBytes(bytes);
 
+    if (excel.tables.isEmpty) {
+      throw Exception('Excel file has no sheets.');
+    }
 
-//   // Process Excel file and match with images
-//   Future<List<ProductData>> _processExcelFile(File excelFile, Map<String, File> images) async {
-//     List<ProductData> products = [];
+    final firstSheetName = excel.tables.keys.firstWhere(
+      (name) => _normalize(name) == 'products',
+      orElse: () => excel.tables.keys.first,
+    );
+    final sheet = excel.tables[firstSheetName];
 
-//     final bytes = await excelFile.readAsBytes();
-//     final excel = Excel.decodeBytes(bytes);
+    if (sheet == null || sheet.rows.isEmpty) {
+      throw Exception('Excel sheet is empty.');
+    }
 
-//     for (var table in excel.tables.keys) {
-//       final sheet = excel.tables[table]!;
-      
-//       // Skip header row (index 0)
-//       for (var rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
-//         final row = sheet.rows[rowIndex];
-        
-//         if (row.isEmpty) continue;
+    final headerRow = sheet.rows.first;
+    final headerMap = <String, int>{};
 
-//         // Parse product data according to your model
-//         // Excel columns: itemCode, market, name, price, offerPrice, unit, stock, description, 
-//         //                categoryId, hyperMarket, hyperMarketPrice, kgPrice, ctrPrice, pcsPrice, isHidden, images
-        
-//         String itemCode = row[0]?.value?.toString() ?? '';
-//         String market = row[1]?.value?.toString() ?? '';
-//         String name = row[2]?.value?.toString() ?? '';
-//         double price = _parseDouble(row[3]?.value) ?? 0.0;
-//         double? offerPrice = _parseDouble(row[4]?.value);
-//         String unit = row[5]?.value?.toString() ?? '';
-//         int stock = _parseInt(row[6]?.value);
-//         String description = row[7]?.value?.toString() ?? '';
-//         String categoryId = row[8]?.value?.toString() ?? '';
-//         double? hyperMarket = _parseDouble(row[9]?.value);
-//         double? hyperMarketPrice = _parseDouble(row[10]?.value);
-//         double? kgPrice = _parseDouble(row[11]?.value);
-//         double? ctrPrice = _parseDouble(row[12]?.value);
-//         double? pcsPrice = _parseDouble(row[13]?.value);
-//         bool isHidden = row[14]?.value?.toString().toLowerCase() == 'true';
-//         String imageNames = row[15]?.value?.toString() ?? '';
+    for (var i = 0; i < headerRow.length; i++) {
+      final header = _normalize(_cellToString(headerRow[i]));
+      if (header.isNotEmpty) {
+        headerMap[header] = i;
+      }
+    }
 
-//         if (name.isEmpty || itemCode.isEmpty) continue;
+    for (var rowIndex = 1; rowIndex < sheet.rows.length; rowIndex++) {
+      final row = sheet.rows[rowIndex];
+      final rowNumber = rowIndex + 1;
 
-//         // Split image names by comma
-//         List<String> imageFileNames = imageNames
-//             .split(',')
-//             .map((e) => e.trim())
-//             .where((e) => e.isNotEmpty)
-//             .toList();
+      // Template order:
+      // 0 NAME, 1 itemcode, 2 price, 3 offerprice, 4 unit, 5 stock,
+      // 6 description, 7 categoryid, 8 market, 9 hypermarket,
+      // 10 hypermarketprice, 11 pcsprice, 12 kgprice, 13 ctnprice, 14 images
+      final name = _getText(
+        row,
+        headerMap,
+        keys: const ['name', 'productname', 'product_name'],
+        fallback: 0,
+      );
+      final itemCode = _getText(
+        row,
+        headerMap,
+        keys: const ['itemcode', 'item_code', 'code'],
+        fallback: 1,
+      );
+      final priceText = _getText(
+        row,
+        headerMap,
+        keys: const ['price', 'baseprice', 'base_price'],
+        fallback: 2,
+      );
+      final offerPriceText = _getText(
+        row,
+        headerMap,
+        keys: const ['offerprice', 'offer_price'],
+        fallback: 3,
+      );
+      final unit = _getText(row, headerMap, keys: const ['unit'], fallback: 4);
+      final stockText = _getText(
+        row,
+        headerMap,
+        keys: const ['stock'],
+        fallback: 5,
+      );
+      final description = _getText(
+        row,
+        headerMap,
+        keys: const ['description', 'desc'],
+        fallback: 6,
+      );
+      final category = _getText(
+        row,
+        headerMap,
+        keys: const ['category', 'categoryid', 'category_id'],
+        fallback: 7,
+      );
+      final market = _getText(
+        row,
+        headerMap,
+        keys: const ['market'],
+        fallback: 8,
+      );
+      final hyperMarketText = _getText(
+        row,
+        headerMap,
+        keys: const [
+          'hypermarket',
+          'hyper_market',
+          'hyperprice',
+          'hyper_price',
+        ],
+        fallback: 9,
+      );
+      final hyperMarketPriceText = _getText(
+        row,
+        headerMap,
+        keys: const ['hypermarketprice', 'hyper_market_price'],
+        fallback: 10,
+      );
+      final pcsPriceText = _getText(
+        row,
+        headerMap,
+        keys: const ['pcsprice', 'pcs_price'],
+        fallback: 11,
+      );
+      final kgPriceText = _getText(
+        row,
+        headerMap,
+        keys: const ['kgprice', 'kg_price'],
+        fallback: 12,
+      );
+      final ctnPriceText = _getText(
+        row,
+        headerMap,
+        keys: const ['ctnprice', 'ctn_price', 'ctrprice', 'ctr_price'],
+        fallback: 13,
+      );
+      final imagesText = _getText(
+        row,
+        headerMap,
+        keys: const ['images', 'image', 'image_names', 'imagefiles'],
+        fallback: 14,
+      );
 
-//         // Match images
-//         List<File> productImages = [];
-//         for (var imageName in imageFileNames) {
-//           if (images.containsKey(imageName)) {
-//             productImages.add(images[imageName]!);
-//           }
-//         }
+      if (name.isEmpty && itemCode.isEmpty) {
+        continue;
+      }
 
-//         products.add(ProductData(
-//           itemCode: itemCode,
-//           market: market,
-//           name: name,
-//           price: price,
-//           offerPrice: offerPrice,
-//           unit: unit,
-//           stock: stock,
-//           description: description,
-//           categoryId: categoryId,
-//           hyperMarket: hyperMarket,
-//           hyperMarketPrice: hyperMarketPrice,
-//           kgPrice: kgPrice,
-//           ctrPrice: ctrPrice,
-//           pcsPrice: pcsPrice,
-//           isHidden: isHidden,
-//           imageFiles: productImages,
-//         ));
-//       }
-//     }
+      final price = _toDouble(priceText);
+      if (name.isEmpty || price == null) {
+        issues.add('Row $rowNumber skipped: name/price is missing or invalid.');
+        continue;
+      }
 
-//     return products;
-//   }
+      final normalizedItemCode = itemCode.isEmpty
+          ? _generateItemCode(name: name, rowNumber: rowNumber)
+          : itemCode;
+      if (itemCode.isEmpty) {
+        issues.add(
+          'Row $rowNumber itemcode missing. Generated: $normalizedItemCode',
+        );
+      }
 
-//   double? _parseDouble(dynamic value) {
-//     if (value == null) return null;
-//     if (value is num) return value.toDouble();
-//     if (value is String) return double.tryParse(value);
-//     return null;
-//   }
+      final stock = _toInt(stockText);
+      final normalizedUnit = unit.isEmpty ? 'PCS' : unit;
+      final normalizedMarket = market.isEmpty ? 'Local Market' : market;
+      final normalizedCategory = category.isEmpty ? 'Uncategorized' : category;
 
-//   int _parseInt(dynamic value) {
-//     if (value == null) return 0;
-//     if (value is int) return value;
-//     if (value is String) return int.tryParse(value) ?? 0;
-//     if (value is double) return value.toInt();
-//     return 0;
-//   }
+      final imageFiles = <File>[];
+      if (imagesText.isNotEmpty) {
+        final imageNames = imagesText
+            .split(RegExp(r'[;,|]'))
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
 
-//   void _showSuccessDialog(List<ProductData> products) {
-//     showDialog(
-//       context: context,
-//       builder: (context) => AlertDialog(
-//         title: Text('Upload Successful'),
-//         content: Column(
-//           mainAxisSize: MainAxisSize.min,
-//           crossAxisAlignment: CrossAxisAlignment.start,
-//           children: [
-//             Text('Processed ${products.length} products'),
-//             SizedBox(height: 10),
-//             Text('Total images: ${products.fold(0, (sum, p) => sum + p.imageFiles.length)}'),
-//           ],
-//         ),
-//         actions: [
-//           TextButton(
-//             onPressed: () => Navigator.pop(context),
-//             child: Text('Cancel'),
-//           ),
-//           ElevatedButton(
-//             onPressed: () {
-//               Navigator.pop(context);
-//               _saveProductsToFirestore(products);
-//             },
-//             child: Text('Upload to Firestore'),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
+        for (final imageName in imageNames) {
+          final file = _findImage(imageName, imagePool);
+          if (file != null) {
+            imageFiles.add(file);
+          } else {
+            issues.add('Row $rowNumber image not found: $imageName');
+          }
+        }
+      }
 
-//   // Save products to Firestore with Cloudinary image upload
-//   Future<void> _saveProductsToFirestore(List<ProductData> products) async {
-//     setState(() {
-//       isProcessing = true;
-//       uploadedCount = 0;
-//       statusMessage = 'Starting bulk upload...';
-//     });
+      rows.add(
+        _BulkUploadRow(
+          rowNumber: rowNumber,
+          itemCode: normalizedItemCode,
+          market: normalizedMarket,
+          name: name,
+          price: price,
+          offerPrice: _toDouble(offerPriceText),
+          unit: normalizedUnit,
+          stock: stock,
+          description: description,
+          categoryId: normalizedCategory,
+          hyperMarket: _toDouble(hyperMarketText) ?? 0,
+          hyperMarketPrice: _toDouble(hyperMarketPriceText),
+          kgPrice: _toDouble(kgPriceText) ?? 0,
+          ctnPrice: _toDouble(ctnPriceText) ?? 0,
+          pcsPrice: _toDouble(pcsPriceText) ?? 0,
+          imageFiles: imageFiles,
+        ),
+      );
+    }
 
-//     try {
-//       // TODO: Replace with your actual ProductProvider instance
-//       // final productProvider = Provider.of<ProductProvider>(context, listen: false);
+    return _ParsedResult(rows: rows, issues: issues);
+  }
 
-//       for (int i = 0; i < products.length; i++) {
-//         final productData = products[i];
-        
-//         setState(() => statusMessage = 'Uploading product ${i + 1}/${products.length}: ${productData.name}');
-        
-//         // Create Product instance with temporary empty images list
-//         final product = Product(
-//           id: DateTime.now().millisecondsSinceEpoch.toString() + '_$i', // Generate unique ID
-//           itemCode: productData.itemCode,
-//           market: productData.market,
-//           name: productData.name,
-//           price: productData.price,
-//           offerPrice: productData.offerPrice,
-//           unit: productData.unit,
-//           stock: productData.stock,
-//           description: productData.description,
-//           images: [], // Will be filled by addProduct
-//           categoryId: productData.categoryId,
-//           hyperMarket: productData.hyperMarket,
-//           hyperMarketPrice: productData.hyperMarketPrice,
-//           kgPrice: productData.kgPrice,
-//           ctrPrice: productData.ctrPrice,
-//           pcsPrice: productData.pcsPrice,
-//           isHidden: productData.isHidden,
-//         );
+  Future<void> _uploadAllProducts() async {
+    if (_rows.isEmpty || _isUploading) return;
 
-//         // Call your existing addProduct function
-//         // This will upload images to Cloudinary and save to Firestore
-//         // await productProvider.addProduct(product, productData.imageFiles);
+    final provider = context.read<ProductProvider>();
 
-//         // ⚠️ UNCOMMENT THE LINE ABOVE AND COMMENT THE LINE BELOW WHEN INTEGRATING
-//         await Future.delayed(Duration(milliseconds: 500)); // Simulate upload
+    setState(() {
+      _isUploading = true;
+      _uploadedCount = 0;
+      _uploadIssues.clear();
+      _statusMessage = 'Uploading products...';
+    });
 
-//         setState(() => uploadedCount = i + 1);
-//       }
+    for (var index = 0; index < _rows.length; index++) {
+      final row = _rows[index];
 
-//       setState(() {
-//         isProcessing = false;
-//         statusMessage = 'Successfully uploaded all ${products.length} products!';
-//       });
+      final product = Product(
+        id: '${DateTime.now().microsecondsSinceEpoch}_$index',
+        itemCode: row.itemCode,
+        market: row.market,
+        name: row.name,
+        price: row.price,
+        offerPrice: row.offerPrice,
+        unit: row.unit,
+        stock: row.stock,
+        description: row.description,
+        images: const [],
+        categoryId: row.categoryId,
+        hyperMarket: row.hyperMarket,
+        hyperMarketPrice: row.hyperMarketPrice,
+        kgPrice: row.kgPrice,
+        ctrPrice: row.ctnPrice,
+        pcsPrice: row.pcsPrice,
+      );
 
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(
-//           content: Text('✅ Successfully uploaded ${products.length} products!'),
-//           backgroundColor: Colors.green,
-//           duration: Duration(seconds: 3),
-//         ),
-//       );
+      try {
+        await provider.addProduct(product, row.imageFiles);
+      } catch (e) {
+        _uploadIssues.add('Row ${row.rowNumber} failed: $e');
+      }
 
-//       // Clear processed products after successful upload
-//       setState(() => processedProducts = []);
+      if (!mounted) return;
+      setState(() {
+        _uploadedCount = index + 1;
+      });
+    }
 
-//     } catch (e) {
-//       setState(() {
-//         isProcessing = false;
-//         statusMessage = 'Error: Failed after uploading $uploadedCount products. Error: ${e.toString()}';
-//       });
+    if (!mounted) return;
 
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(
-//           content: Text('❌ Upload failed: ${e.toString()}'),
-//           backgroundColor: Colors.red,
-//           duration: Duration(seconds: 5),
-//         ),
-//       );
-//     }
-//   }
+    final successCount = _rows.length - _uploadIssues.length;
+    setState(() {
+      _isUploading = false;
+      _statusMessage =
+          'Upload complete. Success: $successCount, Failed: ${_uploadIssues.length}';
+    });
 
-// @override
-// Widget build(BuildContext context) {
-//   return Scaffold(
-//     appBar: AppBar(title: Text('Bulk Product Upload')),
-//     body: SingleChildScrollView(   // ✅ ADD THIS
-//       child: Padding(
-//         padding: EdgeInsets.all(16.0),
-//         child: Column(
-//           crossAxisAlignment: CrossAxisAlignment.stretch,
-//           children: [
-//             Card(
-//               child: Padding(
-//                 padding: EdgeInsets.all(16.0),
-//                 child: Column(
-//                   crossAxisAlignment: CrossAxisAlignment.start,
-//                   children: [
-//                     Text('Instructions:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-//                     SizedBox(height: 10),
-//                     Text('Excel/CSV Columns:', style: TextStyle(fontWeight: FontWeight.bold)),
-//                     Text('itemCode, market, name, price, offerPrice, unit, stock, description, categoryId, hyperMarket, hyperMarketPrice, kgPrice, ctrPrice, pcsPrice, isHidden, images'),
-//                     SizedBox(height: 10),
-//                     Divider(),
-//                     Text('Steps:', style: TextStyle(fontWeight: FontWeight.bold)),
-//                     Text('• Prepare CSV or Excel'),
-//                     Text('• Add images inside "images/" folder'),
-//                     Text('• ZIP and upload'),
-//                   ],
-//                 ),
-//               ),
-//             ),
-//             SizedBox(height: 20),
-//             ElevatedButton.icon(
-//               onPressed: isProcessing ? null : pickAndProcessZipOrCsvXlsxFile,
-//               icon: Icon(Icons.upload_file),
-//               label: Text('Select ZIP / CSV / Excel'),
-//               style: ElevatedButton.styleFrom(
-//                 padding: EdgeInsets.all(16),
-//               ),
-//             ),
-//             SizedBox(height: 20),
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Bulk upload finished. Success: $successCount, Failed: ${_uploadIssues.length}',
+        ),
+      ),
+    );
+  }
 
-//             if (isProcessing)
-//               Column(
-//                 children: [
-//                   LinearProgressIndicator(
-//                     value: processedProducts.isNotEmpty && uploadedCount > 0
-//                         ? uploadedCount / processedProducts.length
-//                         : null,
-//                   ),
-//                   SizedBox(height: 10),
-//                   Text('Uploaded: $uploadedCount / ${processedProducts.length}'),
-//                 ],
-//               ),
+  bool _isImageFile(String lowerPath) {
+    return lowerPath.endsWith('.jpg') ||
+        lowerPath.endsWith('.jpeg') ||
+        lowerPath.endsWith('.png') ||
+        lowerPath.endsWith('.webp');
+  }
 
-//             if (statusMessage.isNotEmpty)
-//               Card(
-//                 color: statusMessage.contains('Error') ? Colors.red.shade50 : Colors.green.shade50,
-//                 child: Padding(
-//                   padding: EdgeInsets.all(16.0),
-//                   child: Text(statusMessage),
-//                 ),
-//               ),
+  String _baseName(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final index = normalized.lastIndexOf('/');
+    if (index == -1) return normalized;
+    return normalized.substring(index + 1);
+  }
 
-//             SizedBox(height: 20),
+  File? _findImage(String name, Map<String, File> imagePool) {
+    final base = _baseName(name).toLowerCase();
 
-//             if (processedProducts.isNotEmpty && !isProcessing)
-//               ListView.builder(
-//                 shrinkWrap: true,        // ✅ prevents inner overflow
-//                 physics: NeverScrollableScrollPhysics(), // ✅ handled by main scroll
-//                 itemCount: processedProducts.length,
-//                 itemBuilder: (context, index) {
-//                   final p = processedProducts[index];
-//                   return ListTile(
-//                     title: Text(p.name),
-//                     subtitle: Text('₹${p.price} | Stock: ${p.stock}'),
-//                   );
-//                 },
-//               ),
+    final direct = imagePool[base];
+    if (direct != null) return direct;
 
-//             SizedBox(height: 40), // optional spacing
-//           ],
-//         ),
-//       ),
-//     ),
-//   );
-// }
+    if (!base.contains('.')) {
+      const extensions = ['.jpg', '.jpeg', '.png', '.webp'];
+      for (final extension in extensions) {
+        final candidate = imagePool['$base$extension'];
+        if (candidate != null) return candidate;
+      }
+    }
 
-//   void _showProductDetails(ProductData product) {
-//     showDialog(
-//       context: context,
-//       builder: (context) => AlertDialog(
-//         title: Text(product.name),
-//         content: SingleChildScrollView(
-//           child: Column(
-//             crossAxisAlignment: CrossAxisAlignment.start,
-//             mainAxisSize: MainAxisSize.min,
-//             children: [
-//               Text('Item Code: ${product.itemCode}'),
-//               Text('Market: ${product.market}'),
-//               Text('Price: ₹${product.price}'),
-//               if (product.offerPrice != null) Text('Offer Price: ₹${product.offerPrice}'),
-//               Text('Unit: ${product.unit}'),
-//               Text('Stock: ${product.stock}'),
-//               Text('Category ID: ${product.categoryId}'),
-//               if (product.hyperMarketPrice != null) Text('Hyper Market Price: ₹${product.hyperMarketPrice}'),
-//               if (product.kgPrice != null) Text('KG Price: ₹${product.kgPrice}'),
-//               if (product.ctrPrice != null) Text('CTR Price: ₹${product.ctrPrice}'),
-//               if (product.pcsPrice != null) Text('PCS Price: ₹${product.pcsPrice}'),
-//               Text('Hidden: ${product.isHidden}'),
-//               SizedBox(height: 10),
-//               Text('Description: ${product.description}'),
-//               SizedBox(height: 10),
-//               Text('Images (${product.imageFiles.length}):'),
-//               SizedBox(height: 10),
-//               ...product.imageFiles.map((img) => Padding(
-//                 padding: EdgeInsets.only(bottom: 8),
-//                 child: Image.file(img, height: 100),
-//               )).toList(),
-//             ],
-//           ),
-//         ),
-//         actions: [
-//           TextButton(
-//             onPressed: () => Navigator.pop(context),
-//             child: Text('Close'),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-// }
+    return null;
+  }
 
-// // Temporary model to hold product data with File objects
-// class ProductData {
-//   final String itemCode;
-//   final String market;
-//   final String name;
-//   final double price;
-//   final double? offerPrice;
-//   final String unit;
-//   final int stock;
-//   final String description;
-//   final String categoryId;
-//   final double? hyperMarket;
-//   final double? hyperMarketPrice;
-//   final double? kgPrice;
-//   final double? ctrPrice;
-//   final double? pcsPrice;
-//   final bool isHidden;
-//   final List<File> imageFiles;
+  String _normalize(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
 
-//   ProductData({
-//     required this.itemCode,
-//     required this.market,
-//     required this.name,
-//     required this.price,
-//     this.offerPrice,
-//     required this.unit,
-//     required this.stock,
-//     required this.description,
-//     required this.categoryId,
-//     this.hyperMarket,
-//     this.hyperMarketPrice,
-//     this.kgPrice,
-//     this.ctrPrice,
-//     this.pcsPrice,
-//     required this.isHidden,
-//     required this.imageFiles,
-//   });
-// }
+  String _cellToString(dynamic cell) {
+    if (cell == null) return '';
 
-// // Your existing Product model (reference - already in your code)
-// class Product {
-//   String id;
-//   String name;
-//   double price;
-//   double? offerPrice;
-//   String unit;
-//   int stock;
-//   String description;
-//   List<String> images;
-//   String categoryId;
-//   double? hyperMarket;
-//   String market;
-//   String itemCode;
-//   double? hyperMarketPrice;
-//   double? kgPrice;
-//   double? ctrPrice;
-//   double? pcsPrice;
-//   bool isHidden;
+    try {
+      final dynamic value = cell.value;
+      if (value == null) return '';
+      return value.toString().trim();
+    } catch (_) {
+      return cell.toString().trim();
+    }
+  }
 
-//   Product({
-//     required this.itemCode,
-//     required this.market,
-//     required this.id,
-//     required this.name,
-//     required this.price,
-//     this.offerPrice,
-//     required this.unit,
-//     required this.stock,
-//     required this.description,
-//     required this.images,
-//     required this.categoryId,
-//     this.hyperMarket,
-//     this.hyperMarketPrice,
-//     this.kgPrice,
-//     this.ctrPrice,
-//     this.pcsPrice,
-//     this.isHidden = false,
-//   });
+  String _getText(
+    List<dynamic> row,
+    Map<String, int> headerMap, {
+    required List<String> keys,
+    int? fallback,
+  }) {
+    for (final key in keys) {
+      final index = headerMap[_normalize(key)];
+      if (index != null && index >= 0 && index < row.length) {
+        final text = _cellToString(row[index]);
+        if (text.isNotEmpty) return text;
+      }
+    }
 
-//   Map<String, dynamic> toMap() {
-//     return {
-//       'itemCode': itemCode,
-//       'market': market,
-//       'hyperPrice': hyperMarket,
-//       'id': id,
-//       'name': name,
-//       'price': price,
-//       'offerPrice': offerPrice,
-//       'unit': unit,
-//       'stock': stock,
-//       'description': description,
-//       'images': images,
-//       'categoryId': categoryId,
-//       'hyperMarketPrice': hyperMarketPrice,
-//       'kgPrice': kgPrice,
-//       'ctrPrice': ctrPrice,
-//       'pcsPrice': pcsPrice,
-//       'isHidden': isHidden,
-//     };
-//   }
-// }
+    if (fallback != null && fallback >= 0 && fallback < row.length) {
+      return _cellToString(row[fallback]);
+    }
+
+    return '';
+  }
+
+  double? _toDouble(String value) {
+    final cleaned = value.trim().replaceAll(',', '');
+    if (cleaned.isEmpty) return null;
+    return double.tryParse(cleaned);
+  }
+
+  int _toInt(String value) {
+    final number = _toDouble(value);
+    if (number == null) return 0;
+    return number.toInt();
+  }
+
+  String _generateItemCode({required String name, required int rowNumber}) {
+    final nameSeed = name
+        .toUpperCase()
+        .replaceAll(RegExp(r'[^A-Z0-9]'), '')
+        .padRight(4, 'X')
+        .substring(0, 4);
+    return 'AUTO-$nameSeed-$rowNumber';
+  }
+
+  void _cleanupWorkingDirectory() {
+    final dir = _workingDirectory;
+    if (dir != null && dir.existsSync()) {
+      try {
+        dir.deleteSync(recursive: true);
+      } catch (_) {
+        // ignore cleanup failures
+      }
+    }
+    _workingDirectory = null;
+  }
+}
+
+class _ParsedResult {
+  final List<_BulkUploadRow> rows;
+  final List<String> issues;
+
+  _ParsedResult({required this.rows, required this.issues});
+}
+
+class _BulkUploadRow {
+  final int rowNumber;
+  final String itemCode;
+  final String market;
+  final String name;
+  final double price;
+  final double? offerPrice;
+  final String unit;
+  final int stock;
+  final String description;
+  final String categoryId;
+  final double hyperMarket;
+  final double? hyperMarketPrice;
+  final double kgPrice;
+  final double ctnPrice;
+  final double pcsPrice;
+  final List<File> imageFiles;
+
+  _BulkUploadRow({
+    required this.rowNumber,
+    required this.itemCode,
+    required this.market,
+    required this.name,
+    required this.price,
+    required this.offerPrice,
+    required this.unit,
+    required this.stock,
+    required this.description,
+    required this.categoryId,
+    required this.hyperMarket,
+    required this.hyperMarketPrice,
+    required this.kgPrice,
+    required this.ctnPrice,
+    required this.pcsPrice,
+    required this.imageFiles,
+  });
+}

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 class ThemeProvider extends ChangeNotifier {
   static const String _themeKey = "theme_mode";
-  ThemeMode _themeMode = ThemeMode.dark;
+  ThemeMode _themeMode = ThemeMode.light;
 
   ThemeProvider();
 
@@ -10,15 +11,22 @@ class ThemeProvider extends ChangeNotifier {
   bool get isDarkMode => _themeMode == ThemeMode.dark;
 
   void toggleTheme() {
-    _themeMode = _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+    // Keep a strict brand look (red + white) in this app.
+    _themeMode = ThemeMode.light;
     _saveThemeToPrefs();
     notifyListeners();
   }
 
-  Future<void> loadThemeFromPrefs() async {  // <-- public
+  Future<void> loadThemeFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    final themeIndex = prefs.getInt(_themeKey) ?? 0;
+    final themeIndex = prefs.getInt(_themeKey) ?? ThemeMode.light.index;
     _themeMode = ThemeMode.values[themeIndex];
+
+    if (_themeMode != ThemeMode.light) {
+      _themeMode = ThemeMode.light;
+      await prefs.setInt(_themeKey, ThemeMode.light.index);
+    }
+
     notifyListeners();
   }
 

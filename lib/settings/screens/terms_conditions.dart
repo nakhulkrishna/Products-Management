@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:products_catelogs/theme/widgets/app_components.dart';
+import 'package:products_catelogs/theme/widgets/reference_scaffold.dart';
 
 class TermsAndConditionsScreen extends StatelessWidget {
   const TermsAndConditionsScreen({super.key});
@@ -9,72 +11,71 @@ class TermsAndConditionsScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     Widget buildSection(String title, String content, IconData icon) {
-      return Card(
-        elevation: 3,
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                // mainAxisAlignment: MainAxisAlignment.start,
-                // crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                     CircleAvatar(
-              radius: 24,
-              backgroundColor: theme.primaryColor,
-              child: Icon(icon, color: Colors.white),
+      return AppSectionCard(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: theme.colorScheme.primary.withAlpha(24),
+                  ),
+                  child: Icon(icon, color: theme.colorScheme.primary),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
             ),
-                  const SizedBox(width: 8),
-                  Text(title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      )),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(content, style: theme.textTheme.bodyMedium),
-            ],
-          ),
+            const SizedBox(height: 10),
+            Text(
+              content,
+              style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+            ),
+          ],
         ),
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Terms & Conditions"),
-        elevation: 0,
-      ),
+    return ReferenceScaffold(
+      title: "Terms & Conditions",
+      subtitle: "Usage and compliance",
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Last Updated: 27 Aug 2025",
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: Colors.grey[600])),
+            Text("Last Updated: 27 Aug 2025", style: theme.textTheme.bodySmall),
             const SizedBox(height: 16),
 
             buildSection(
               "Use of App",
               "The app is intended for managing sales, products, and customer records. "
-              "Do not use the app for illegal purposes.",
+                  "Do not use the app for illegal purposes.",
               Iconsax.document,
             ),
 
             buildSection(
               "Orders & Delivery",
               "This app is for record-keeping only. "
-              "No shipping or delivery is managed within the app.",
+                  "No shipping or delivery is managed within the app.",
               Iconsax.box,
             ),
 
             buildSection(
               "Payments",
               "No payments or transactions are processed through the app. "
-              "All payments are managed outside the app.",
+                  "All payments are managed outside the app.",
               Iconsax.money,
             ),
 
@@ -87,7 +88,7 @@ class TermsAndConditionsScreen extends StatelessWidget {
             buildSection(
               "Disclaimer",
               "We are not liable for data loss or misuse caused by user negligence "
-              "or unauthorized third-party access.",
+                  "or unauthorized third-party access.",
               Iconsax.shield,
             ),
 
@@ -95,8 +96,7 @@ class TermsAndConditionsScreen extends StatelessWidget {
             Center(
               child: Text(
                 "© 2025 Red Rose Contract W.L.L",
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: Colors.grey[600]),
+                style: theme.textTheme.bodySmall,
               ),
             ),
           ],

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:products_catelogs/authentication/provider/authentication_provider.dart';
 import 'package:products_catelogs/authentication/screens/reg.dart';
-import 'package:products_catelogs/dashboard/screen/dashboard_screen.dart';
+import 'package:products_catelogs/authentication/widgets/auth_shell.dart';
+import 'package:products_catelogs/dashboard/screen/dash_board_reponsive.dart';
 import 'package:provider/provider.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -12,120 +13,289 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
-  bool registrationEnabled = false;
-  bool loading = true;
+  bool _isCheckingRegistration = true;
+  bool _registrationEnabled = false;
+  bool _obscurePassword = true;
+  bool _rememberMe = true;
 
   @override
   void initState() {
     super.initState();
-    _fetchRegistrationToggle();
+    _loadRegistrationToggle();
   }
 
-  Future<void> _fetchRegistrationToggle() async {
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
-    bool enabled = await userProvider.isRegistrationEnabled();
+  Future<void> _loadRegistrationToggle() async {
+    final userProvider = context.read<UserProvider>();
+    final enabled = await userProvider.isRegistrationEnabled(
+      forceRefresh: true,
+    );
+    if (!mounted) return;
+
     setState(() {
-      registrationEnabled = enabled;
-      loading = false;
+      _registrationEnabled = enabled;
+      _isCheckingRegistration = false;
     });
   }
 
   @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final userProvider = Provider.of<UserProvider>(context);
+    final userProvider = context.watch<UserProvider>();
+    final theme = Theme.of(context);
 
-    if (loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(title: const Text("Login")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+    return AuthShell(
+      title: "Let’s get started",
+      subtitle: "Sign in to continue",
+      footer: _buildFooter(context),
+      child: Form(
+        key: _formKey,
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
+            _buildFieldLabel(context, "Email"),
+            const SizedBox(height: 8),
+            TextFormField(
               controller: emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: "Email",
-                border: OutlineInputBorder(),
+              textInputAction: TextInputAction.next,
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: theme.colorScheme.onSurface,
+              ),
+              validator: (value) {
+                final input = value?.trim() ?? '';
+                if (input.isEmpty) return 'Email is required';
+                if (!userProvider.isValidEmail(input)) {
+                  return 'Enter a valid email';
+                }
+                return null;
+              },
+              decoration: _inputDecoration(
+                context,
+                hintText: "admin@email.com",
+                prefixIcon: Icons.mail_outline_rounded,
               ),
             ),
-            const SizedBox(height: 20),
-            TextField(
+            const SizedBox(height: 16),
+            _buildFieldLabel(context, "Password"),
+            const SizedBox(height: 8),
+            TextFormField(
               controller: passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: "Password",
-                border: OutlineInputBorder(),
+              obscureText: _obscurePassword,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _submit(),
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: theme.colorScheme.onSurface,
+              ),
+              validator: (value) {
+                if ((value ?? '').trim().isEmpty) return 'Password is required';
+                return null;
+              },
+              decoration: _inputDecoration(
+                context,
+                hintText: "********",
+                prefixIcon: Icons.lock_outline_rounded,
+                suffixIcon: IconButton(
+                  onPressed: () {
+                    setState(() => _obscurePassword = !_obscurePassword);
+                  },
+                  icon: Icon(
+                    _obscurePassword
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                    color: theme.textTheme.bodySmall?.color,
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Transform.scale(
+                  scale: 0.92,
+                  child: Checkbox(
+                    value: _rememberMe,
+                    onChanged: (value) {
+                      setState(() => _rememberMe = value ?? true);
+                    },
+                    side: BorderSide(color: theme.dividerColor),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    activeColor: theme.colorScheme.primary,
+                  ),
+                ),
+                Text(
+                  "Remember me",
+                  style: TextStyle(color: theme.textTheme.bodyMedium?.color),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Password reset is not enabled yet."),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    "Forgot Password",
+                    style: TextStyle(color: theme.colorScheme.onSurface),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
+              height: 56,
               child: ElevatedButton(
-                onPressed: () async {
-                  String email = emailController.text.trim();
-                  String password = passwordController.text.trim();
-
-                  if (email.isEmpty || password.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Enter email & password")),
-                    );
-                    return;
-                  }
-
-                  bool success = await userProvider.login(email, password);
-                  if (success) {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const DashboardScreen(),
-                      ),
-                    );
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Invalid credentials")),
-                    );
-                  }
-                },
-                child: const Text("Login"),
+                onPressed: userProvider.isAuthenticating ? null : _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 0,
+                ),
+                child: userProvider.isAuthenticating
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text("Sign In"),
               ),
             ),
-            const SizedBox(height: 20),
-            if (registrationEnabled)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text("Don't have an account? "),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const RegistrationScreen(),
-                        ),
-                      );
-                    },
-                    child: const Text(
-                      "Register",
-                      style: TextStyle(
-                        color: Colors.blue,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildFooter(BuildContext context) {
+    if (_isCheckingRegistration) {
+      return const SizedBox(
+        height: 24,
+        width: 24,
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+
+    if (!_registrationEnabled) {
+      return Text(
+        "Registration is currently disabled by admin settings.",
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodySmall,
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text("Don't have an account? "),
+        TextButton(
+          onPressed: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const RegistrationScreen()),
+            );
+          },
+          child: Text(
+            "Sign up",
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFieldLabel(BuildContext context, String label) {
+    final theme = Theme.of(context);
+    return Text(
+      label,
+      style: TextStyle(
+        color: theme.textTheme.bodyMedium?.color,
+        fontWeight: FontWeight.w500,
+        fontSize: 15,
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(
+    BuildContext context, {
+    required String hintText,
+    required IconData prefixIcon,
+    Widget? suffixIcon,
+  }) {
+    final theme = Theme.of(context);
+    final borderColor = theme.dividerColor;
+
+    return InputDecoration(
+      hintText: hintText,
+      hintStyle: TextStyle(color: theme.textTheme.bodySmall?.color),
+      prefixIcon: Icon(prefixIcon, color: theme.textTheme.bodySmall?.color),
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: theme.brightness == Brightness.dark
+          ? const Color(0xFF1E1E23)
+          : Colors.white,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: borderColor),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: borderColor),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.2),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+    );
+  }
+
+  Future<void> _submit() async {
+    final form = _formKey.currentState;
+    if (form == null || !form.validate()) return;
+
+    FocusScope.of(context).unfocus();
+    final userProvider = context.read<UserProvider>();
+    final success = await userProvider.login(
+      emailController.text,
+      passwordController.text,
+    );
+    if (!mounted) return;
+
+    if (success) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const ResponsiveDashboard()),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(userProvider.authMessage ?? "Login failed")),
     );
   }
 }

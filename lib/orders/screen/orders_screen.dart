@@ -2,67 +2,61 @@ import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart' show Iconsax;
 import 'package:intl/intl.dart';
 import 'package:products_catelogs/products/provider/products_management_pro.dart';
+import 'package:products_catelogs/theme/widgets/app_components.dart';
+import 'package:products_catelogs/theme/widgets/reference_scaffold.dart';
 import 'package:provider/provider.dart';
-
 
 class OrdersScreen extends StatelessWidget {
   const OrdersScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text("Orders"),),
-    body: Consumer<ProductProvider>(
-  builder: (context, value, child) {
-    if (value.orders.isEmpty) {
-      return SizedBox(
-        height: MediaQuery.of(context).size.height, // fill screen
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min, // center content
-            children: [
-              Image.asset(
-                'asstes/Image.png', // fix typo: 'asstes' → 'assets'
-                width: 200,
-                height: 200,
-                fit: BoxFit.contain,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                "No orders yet",
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-              ),
-            ],
-          ),
-        ),
-      );
-    } else {
-      return ListView.builder(
-        padding: const EdgeInsets.all(8),
-        itemCount: value.orders.length > 8 ? 8 : value.orders.length,
-        itemBuilder: (context, index) {
-          final orders = value.orders[index];
-          String formattedDate = orders.timestamp != null
-              ? DateFormat('d MMM yyyy').format(orders.timestamp!)
-              : '';
-          return buildTransaction(
-            context,
-            orders.productName,
-            formattedDate,
-            orders.total.toString(),
+    return ReferenceScaffold(
+      title: "Orders",
+      subtitle: "Recent sales records",
+      bodyPadding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+      body: Consumer<ProductProvider>(
+        builder: (context, value, child) {
+          if (value.orders.isEmpty) {
+            return const AppEmptyState(
+              assetPath: 'asstes/Image.png',
+              title: "No orders yet",
+              subtitle: "Placed orders will appear here",
+            );
+          }
+
+          final orders = value.orders.length > 8
+              ? value.orders.take(8).toList()
+              : value.orders;
+
+          return AppSectionCard(
+            title: "Latest Orders",
+            subtitle: "Showing ${orders.length} recent entries",
+            child: ListView.builder(
+              padding: EdgeInsets.zero,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: orders.length,
+              itemBuilder: (context, index) {
+                final order = orders[index];
+                final formattedDate = order.timestamp != null
+                    ? DateFormat('d MMM yyyy').format(order.timestamp!)
+                    : '';
+                return buildTransaction(
+                  context,
+                  order.productName,
+                  formattedDate,
+                  order.total.toString(),
+                );
+              },
+            ),
           );
         },
-      );
-    }
-  },
-),
-     
+      ),
     );
   }
-    Widget buildTransaction(
+
+  Widget buildTransaction(
     BuildContext context,
     String name,
     String date,
@@ -70,18 +64,18 @@ class OrdersScreen extends StatelessWidget {
   ) {
     final theme = Theme.of(context);
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
+        color: theme.colorScheme.primary.withAlpha(12),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 24,
-            backgroundColor: theme.primaryColor,
-            child: const Icon(Iconsax.box, color: Colors.white),
+            radius: 21,
+            backgroundColor: theme.colorScheme.primary.withAlpha(30),
+            child: Icon(Iconsax.box, color: theme.colorScheme.primary),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -92,7 +86,7 @@ class OrdersScreen extends StatelessWidget {
                   name,
                   style: theme.textTheme.bodyLarge?.copyWith(
                     fontWeight: FontWeight.w600,
-                    fontSize: 16,
+                    fontSize: 15,
                   ),
                 ),
                 Text(date, style: theme.textTheme.bodySmall),
@@ -102,19 +96,18 @@ class OrdersScreen extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text(
-                "Ordered",
+              Text(
+                "Total",
                 style: TextStyle(
-                  color: Colors.green,
+                  color: theme.colorScheme.primary,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              Text(txnId, style: theme.textTheme.bodySmall),
+              Text("QAR $txnId", style: theme.textTheme.bodySmall),
             ],
           ),
         ],
       ),
     );
   }
-
 }

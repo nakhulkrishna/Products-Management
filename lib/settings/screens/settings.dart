@@ -3,11 +3,12 @@ import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/authentication/provider/authentication_provider.dart';
 import 'package:products_catelogs/authentication/screens/splash_screen.dart';
 import 'package:products_catelogs/products/provider/products_management_pro.dart';
-import 'package:products_catelogs/settings/provider/setting_provider.dart';
 import 'package:products_catelogs/settings/screens/about_us.dart';
 import 'package:products_catelogs/settings/screens/privacy_policy.dart';
 import 'package:products_catelogs/settings/screens/terms_conditions.dart';
 import 'package:products_catelogs/settings/screens/whatsapp_number.dart';
+import 'package:products_catelogs/theme/widgets/app_components.dart';
+import 'package:products_catelogs/theme/widgets/reference_scaffold.dart';
 import 'package:provider/provider.dart';
 
 class Settings extends StatelessWidget {
@@ -15,24 +16,21 @@ class Settings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, dynamic>> settingsItems = [
+    final settingsItems = <Map<String, dynamic>>[
       {
         "title": "Order WhatsApp Number",
+        "subtitle": "Update the shared order contact",
         "icon": Iconsax.call,
         "onTap": () {
-            Navigator.push(
+          Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const WhatsAppSettingsScreen()),
           );
-          // _showEditDialog(
-          //   context,
-          //   "Order WhatsApp Number",
-          
-          // );
         },
       },
       {
         "title": "About Us",
+        "subtitle": "Company and app overview",
         "icon": Iconsax.info_circle,
         "onTap": () {
           Navigator.push(
@@ -43,6 +41,7 @@ class Settings extends StatelessWidget {
       },
       {
         "title": "Privacy Policy",
+        "subtitle": "How user data is handled",
         "icon": Iconsax.shield_tick,
         "onTap": () {
           Navigator.push(
@@ -53,6 +52,7 @@ class Settings extends StatelessWidget {
       },
       {
         "title": "Terms & Conditions",
+        "subtitle": "Usage and legal terms",
         "icon": Iconsax.document_text,
         "onTap": () {
           Navigator.push(
@@ -61,157 +61,80 @@ class Settings extends StatelessWidget {
           );
         },
       },
- {
+      {
         "title": "Clear Orders",
+        "subtitle": "Delete all sales records",
         "icon": Iconsax.brush_1,
-        "onTap": () {
-        context.read<ProductProvider>().deleteAllOrders();
+        "danger": true,
+        "onTap": () async {
+          final shouldClear = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text("Clear Orders"),
+              content: const Text(
+                "This will permanently remove all order records.",
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text("Cancel"),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text("Clear"),
+                ),
+              ],
+            ),
+          );
+
+          if (!context.mounted) return;
+          if (shouldClear == true) {
+            context.read<ProductProvider>().deleteAllOrders();
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text("All orders cleared")));
+          }
         },
       },
       {
         "title": "Log Out",
+        "subtitle": "Sign out from this device",
         "icon": Iconsax.logout,
+        "danger": true,
         "onTap": () {
-        context.read<UserProvider>().logout();
-Navigator.pushAndRemoveUntil(
-  context,
-  MaterialPageRoute(builder: (context) => const SplashScreen()),
-  (Route<dynamic> route) => false, // removes all previous routes
-);
-
-        },
-      },
-      {
-        "title": "More Settings",
-        "icon": Iconsax.setting_2,
-        "onTap": () {
-          ScaffoldMessenger.of(
+          context.read<UserProvider>().logout();
+          Navigator.pushAndRemoveUntil(
             context,
-          ).showSnackBar(const SnackBar(content: Text("Coming Soon...")));
+            MaterialPageRoute(builder: (context) => const SplashScreen()),
+            (Route<dynamic> route) => false,
+          );
         },
       },
     ];
 
-    return Scaffold(
-      appBar: AppBar(title: const Text("Settings")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(8.0),
-        child: ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: settingsItems.length,
-          itemBuilder: (context, index) {
-            final item = settingsItems[index];
-            return seetingsCard(
-              context,
-              title: item["title"],
-              icon: item["icon"],
-              onTap: item["onTap"],
-            );
-          },
-        ),
+    return ReferenceScaffold(
+      title: "Settings",
+      subtitle: "App preferences and account",
+      bodyPadding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+      body: ListView(
+        children: [
+          AppSectionCard(
+            title: "General",
+            subtitle: "Account and app-level controls",
+            child: Column(
+              children: settingsItems.map((item) {
+                return AppInfoTile(
+                  icon: item["icon"] as IconData,
+                  title: item["title"] as String,
+                  subtitle: item["subtitle"] as String?,
+                  isDanger: (item["danger"] as bool?) ?? false,
+                  onTap: item["onTap"] as VoidCallback,
+                );
+              }).toList(),
+            ),
+          ),
+        ],
       ),
     );
   }
-
-  Widget seetingsCard(
-    BuildContext context, {
-    required String title,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: theme.primaryColor,
-              child: Icon(icon, color: Colors.white),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                title,
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-            const Icon(Iconsax.arrow_right_3, size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
-// void _showEditDialog(BuildContext context, String title , ) {
-//   final provider = Provider.of<WhatsAppNumberProvider>(context, listen: false);
-//   final controller = TextEditingController(text: provider.number);
-
-//   showModalBottomSheet(
-//     context: context,
-//     isScrollControlled: true,
-//     shape: const RoundedRectangleBorder(
-//       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-//     ),
-//     builder: (context) => Padding(
-//       padding: EdgeInsets.only(
-//         left: 16,
-//         right: 16,
-//         top: 20,
-//         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-//       ),
-//       child: Column(
-//         mainAxisSize: MainAxisSize.min,
-//         crossAxisAlignment: CrossAxisAlignment.start,
-//         children: [
-//           Text(title, style: Theme.of(context).textTheme.headlineSmall),
-//           const SizedBox(height: 15),
-//           TextField(
-//             controller: controller,
-//             keyboardType: TextInputType.phone,
-//             decoration: InputDecoration(
-//               labelText: "WhatsApp Number",
-//               prefixIcon: const Icon(Iconsax.call),
-//               border: OutlineInputBorder(borderRadius: BorderRadius.circular(20)),
-//             ),
-//           ),
-//           const SizedBox(height: 20),
-//           SizedBox(
-//             width: double.infinity,
-//             child: ElevatedButton(
-//               onPressed: () {
-//                 final text = controller.text.trim();
-//                 if (!provider.validateNumber(text)) {
-//                   ScaffoldMessenger.of(context).showSnackBar(
-//                     const SnackBar(content: Text("Invalid phone number")),
-//                   );
-//                   return;
-//                 }
-//                 provider.saveNumber(text);
-//                 Navigator.pop(context);
-//                 ScaffoldMessenger.of(context).showSnackBar(
-//                   SnackBar(content: Text("$title saved: ${provider.number}")),
-//                 );
-//               },
-//               child: const Text("Save"),
-//             ),
-//           ),
-//         ],
-//       ),
-//     ),
-//   );
-// }
-
 }

@@ -2,9 +2,10 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
-import 'package:products_catelogs/dashboard/provider/staff_provider.dart';
 import 'package:products_catelogs/staff_management/provider/provider.dart';
 import 'package:products_catelogs/staff_management/screen/staff_management.dart';
+import 'package:products_catelogs/theme/widgets/app_components.dart';
+import 'package:products_catelogs/theme/widgets/reference_scaffold.dart';
 import 'package:provider/provider.dart';
 
 class SalesmanScreen extends StatelessWidget {
@@ -12,68 +13,53 @@ class SalesmanScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Salesmen"),
-        actions: [
-          IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => AddStaffScreen()),
-              );
-            },
-            icon: Icon(Iconsax.add),
-          ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Consumer<StaffProvider>(
-          builder: (context, staffProvider, child) {
-            final salesmen =
-                staffProvider.staffList; // Assuming this is a list of salesmen
-            // If there are no salesmen, show a centered image with text
-            if (salesmen.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Image.asset(
-                      'asstes/Image-2.png', // Replace with your image path
-                      width: 200,
-                      height: 200,
-                      fit: BoxFit.contain,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      "No salesmen found",
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            return ListView.builder(
-              itemCount: salesmen.length,
-              itemBuilder: (context, index) {
-                final salesman = salesmen[index];
-                return buildSalesmanTile(
-                  staffProvider,
-                  context,
-                  salesman['username'] ?? '',
-                  salesman['email'] ?? '',
-                  salesman['id'] ?? '',
-                );
-              },
+    return ReferenceScaffold(
+      title: "Salesmen",
+      subtitle: "Manage staff accounts",
+      actions: [
+        IconButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const AddStaffScreen()),
             );
           },
+          icon: const Icon(Iconsax.add),
         ),
+      ],
+      bodyPadding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+      body: Consumer<StaffProvider>(
+        builder: (context, staffProvider, child) {
+          final salesmen = staffProvider.staffList;
+          if (salesmen.isEmpty) {
+            return const AppEmptyState(
+              assetPath: 'asstes/Image-2.png',
+              title: "No salesmen found",
+              subtitle: "Add staff to start assigning orders",
+            );
+          }
+
+          return ListView(
+            children: [
+              AppSectionCard(
+                title: "Team Members",
+                subtitle: "${salesmen.length} active staff",
+                child: Column(
+                  children: [
+                    for (final salesman in salesmen)
+                      buildSalesmanTile(
+                        staffProvider,
+                        context,
+                        salesman['username'] ?? '',
+                        salesman['email'] ?? '',
+                        salesman['id'] ?? '',
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -85,45 +71,16 @@ class SalesmanScreen extends StatelessWidget {
     String email,
     String id,
   ) {
-    final theme = Theme.of(context);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: theme.primaryColor,
-            child: const Icon(Iconsax.user, color: Colors.white),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  id,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
-                ),
-                Text(email, style: theme.textTheme.bodySmall),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: () {
-              log(id);
-              provider.deleteStaff(id);
-            },
-            icon: Icon(Iconsax.trash, color: Colors.red),
-          ),
-        ],
+    return AppInfoTile(
+      icon: Iconsax.user,
+      title: name,
+      subtitle: email,
+      trailing: IconButton(
+        onPressed: () {
+          log(id);
+          provider.deleteStaff(id);
+        },
+        icon: const Icon(Iconsax.trash, color: Colors.red),
       ),
     );
   }

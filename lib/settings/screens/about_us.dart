@@ -1,27 +1,50 @@
 import 'package:flutter/material.dart';
-/// 🔑 About Us
+import 'package:products_catelogs/theme/widgets/app_components.dart';
+import 'package:products_catelogs/theme/widgets/reference_scaffold.dart';
+
 class AboutUsScreen extends StatelessWidget {
   const AboutUsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(title: const Text("About Us")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
+    return ReferenceScaffold(
+      title: "About Us",
+      subtitle: "Who we are",
+      body: SingleChildScrollView(
+        child: AppSectionCard(
+          title: "Red Rose Contracting W.L.L",
+          subtitle: "Wholesale dates and chocolates",
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("About Us", style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 10),
               Text(
-                "Red Rose Contracting W.L.L\n\n"
-                "We specialize in wholesale dates and chocolates, providing high-quality products to meet business and customer demands.\n\n"
-                "Our vision is to build long-term relationships by delivering excellence, reliability, and premium quality products.\n\n"
-                "This Sales Management App is designed exclusively to help manage product, order, and customer data efficiently.",
-                style: theme.textTheme.bodyMedium,
+                "We specialize in high-quality wholesale products built for reliable business operations and repeat customer trust.",
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                "Our vision",
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                "Build long-term relationships by delivering consistent quality, reliability, and service excellence.",
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                "App purpose",
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                "This app helps your team manage products, categories, orders, and staff operations in one place.",
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
               ),
             ],
           ),
