@@ -298,29 +298,84 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
 
   Future<void> _renameCategory(ProductCategoryRecord category) async {
     final controller = TextEditingController(text: category.name);
-    final updated = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Rename Category'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: const InputDecoration(labelText: 'Category Name'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+    final updated = await _showRightSheet<String>(
+      title: 'Rename Category',
+      icon: Icons.drive_file_rename_outline,
+      body: StatefulBuilder(
+        builder: (context, setSheetState) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE5EAF1)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Current Name',
+                    style: TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    category.name,
+                    style: const TextStyle(
+                      color: Color(0xFF111827),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            FilledButton(
-              onPressed: () =>
-                  Navigator.of(context).pop(controller.text.trim()),
-              child: const Text('Save'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              onChanged: (_) => setSheetState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'New Category Name',
+                hintText: 'Enter updated category name',
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.info_outline_rounded, size: 15, color: Color(0xFF6B7280)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Keep names short and unique. ${controller.text.trim().length}/40',
+                    style: const TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
-        );
-      },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+          icon: const Icon(Icons.check_rounded, size: 16),
+          label: const Text('Save'),
+        ),
+      ],
     );
 
     if (updated == null || updated.isEmpty) return;
@@ -343,24 +398,26 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
   }
 
   Future<void> _deleteCategory(ProductCategoryRecord category) async {
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Delete Category'),
-          content: Text('Delete "${category.name}"?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Delete'),
-            ),
-          ],
-        );
-      },
+    final shouldDelete = await _showRightSheet<bool>(
+      title: 'Delete Category',
+      icon: Icons.delete_outline_rounded,
+      iconColor: const Color(0xFFE65A5A),
+      body: Text(
+        'Delete "${category.name}"?\n\nThis action cannot be undone.',
+        style: const TextStyle(fontWeight: FontWeight.w500),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65A5A)),
+          onPressed: () => Navigator.of(context).pop(true),
+          icon: const Icon(Icons.delete_rounded, size: 16),
+          label: const Text('Delete'),
+        ),
+      ],
     );
 
     if (shouldDelete != true) return;
@@ -380,5 +437,90 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<T?> _showRightSheet<T>({
+    required String title,
+    required IconData icon,
+    required Widget body,
+    required List<Widget> actions,
+    Color iconColor = const Color(0xFF111827),
+  }) {
+    return showGeneralDialog<T>(
+      context: context,
+      barrierLabel: title,
+      barrierDismissible: true,
+      barrierColor: const Color(0x99000000),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.white,
+            borderRadius: const BorderRadius.horizontal(left: Radius.circular(18)),
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width > 620
+                  ? 520
+                  : MediaQuery.of(context).size.width * 0.92,
+              height: double.infinity,
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 10, 12),
+                      child: Row(
+                        children: [
+                          Icon(icon, size: 20, color: iconColor),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF111827),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1, color: Color(0xFFE5E8EE)),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                        child: body,
+                      ),
+                    ),
+                    const Divider(height: 1, color: Color(0xFFE5E8EE)),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: actions,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
   }
 }

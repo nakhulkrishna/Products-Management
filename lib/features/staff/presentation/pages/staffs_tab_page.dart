@@ -1,6 +1,10 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
+import 'package:products_catelogs/core/constants/firestore_collections.dart';
 
 enum _StaffStatus { active, onLeave, inactive }
 
@@ -13,6 +17,7 @@ class _Salesman {
   final String region;
   final String phone;
   final String email;
+  final String? imageUrl;
   final int dealsClosed;
   final double monthlyTargetQar;
   final double achievedSalesQar;
@@ -25,11 +30,41 @@ class _Salesman {
     required this.region,
     required this.phone,
     required this.email,
+    required this.imageUrl,
     required this.dealsClosed,
     required this.monthlyTargetQar,
     required this.achievedSalesQar,
     required this.status,
   });
+
+  _Salesman copyWith({
+    String? id,
+    String? name,
+    String? role,
+    String? region,
+    String? phone,
+    String? email,
+    String? imageUrl,
+    bool clearImage = false,
+    int? dealsClosed,
+    double? monthlyTargetQar,
+    double? achievedSalesQar,
+    _StaffStatus? status,
+  }) {
+    return _Salesman(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      role: role ?? this.role,
+      region: region ?? this.region,
+      phone: phone ?? this.phone,
+      email: email ?? this.email,
+      imageUrl: clearImage ? null : (imageUrl ?? this.imageUrl),
+      dealsClosed: dealsClosed ?? this.dealsClosed,
+      monthlyTargetQar: monthlyTargetQar ?? this.monthlyTargetQar,
+      achievedSalesQar: achievedSalesQar ?? this.achievedSalesQar,
+      status: status ?? this.status,
+    );
+  }
 }
 
 class StaffsTabPage extends StatefulWidget {
@@ -42,6 +77,7 @@ class StaffsTabPage extends StatefulWidget {
 class _StaffsTabPageState extends State<StaffsTabPage> {
   static const int _rowsPerPage = 13;
 
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _searchController = TextEditingController();
   final NumberFormat _currency = NumberFormat.currency(
     locale: 'en_QA',
@@ -52,9 +88,12 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
   String _query = '';
   _StaffFilter _statusFilter = _StaffFilter.all;
   int _currentPage = 1;
+  bool _loading = true;
+  String? _loadError;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _salesmenSub;
   final Set<String> _selectedIds = <String>{};
 
-  static const List<_Salesman> _salesmen = [
+  static const List<_Salesman> _seedSalesmen = [
     _Salesman(
       id: 'SM-001',
       name: 'Ahmed Nasser',
@@ -62,6 +101,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       region: 'Doha',
       phone: '+974 5112 3301',
       email: 'ahmed@redrose.com',
+      imageUrl: 'https://i.pravatar.cc/120?img=12',
       dealsClosed: 21,
       monthlyTargetQar: 95000,
       achievedSalesQar: 84200,
@@ -74,6 +114,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       region: 'Al Rayyan',
       phone: '+974 5543 2207',
       email: 'fatima@redrose.com',
+      imageUrl: 'https://i.pravatar.cc/120?img=32',
       dealsClosed: 19,
       monthlyTargetQar: 90000,
       achievedSalesQar: 80120,
@@ -86,6 +127,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       region: 'Lusail',
       phone: '+974 6681 4020',
       email: 'omar@redrose.com',
+      imageUrl: 'https://i.pravatar.cc/120?img=51',
       dealsClosed: 15,
       monthlyTargetQar: 70000,
       achievedSalesQar: 56200,
@@ -98,6 +140,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       region: 'Al Wakrah',
       phone: '+974 6611 8853',
       email: 'hassan@redrose.com',
+      imageUrl: 'https://i.pravatar.cc/120?img=47',
       dealsClosed: 11,
       monthlyTargetQar: 65000,
       achievedSalesQar: 38800,
@@ -110,6 +153,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       region: 'Al Khor',
       phone: '+974 5548 7195',
       email: 'maryam@redrose.com',
+      imageUrl: null,
       dealsClosed: 13,
       monthlyTargetQar: 72000,
       achievedSalesQar: 51900,
@@ -122,6 +166,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       region: 'Umm Salal',
       phone: '+974 7774 9921',
       email: 'yousef@redrose.com',
+      imageUrl: null,
       dealsClosed: 7,
       monthlyTargetQar: 55000,
       achievedSalesQar: 23100,
@@ -134,6 +179,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       region: 'Doha',
       phone: '+974 7009 1172',
       email: 'salma@redrose.com',
+      imageUrl: null,
       dealsClosed: 10,
       monthlyTargetQar: 60000,
       achievedSalesQar: 44300,
@@ -146,6 +192,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       region: 'Al Daayen',
       phone: '+974 6655 0823',
       email: 'khalid@redrose.com',
+      imageUrl: null,
       dealsClosed: 9,
       monthlyTargetQar: 58000,
       achievedSalesQar: 36200,
@@ -158,6 +205,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       region: 'Doha',
       phone: '+974 5088 2711',
       email: 'rana@redrose.com',
+      imageUrl: null,
       dealsClosed: 17,
       monthlyTargetQar: 88000,
       achievedSalesQar: 74450,
@@ -170,6 +218,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       region: 'Al Wakrah',
       phone: '+974 6001 3358',
       email: 'nasser@redrose.com',
+      imageUrl: null,
       dealsClosed: 8,
       monthlyTargetQar: 56000,
       achievedSalesQar: 27500,
@@ -182,6 +231,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       region: 'Lusail',
       phone: '+974 5539 1180',
       email: 'aisha@redrose.com',
+      imageUrl: null,
       dealsClosed: 16,
       monthlyTargetQar: 76000,
       achievedSalesQar: 60840,
@@ -194,6 +244,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       region: 'Al Rayyan',
       phone: '+974 6640 2874',
       email: 'majid@redrose.com',
+      imageUrl: null,
       dealsClosed: 12,
       monthlyTargetQar: 62000,
       achievedSalesQar: 41920,
@@ -206,17 +257,186 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       region: 'Doha',
       phone: '+974 5562 9941',
       email: 'noor@redrose.com',
+      imageUrl: null,
       dealsClosed: 6,
       monthlyTargetQar: 52000,
       achievedSalesQar: 19750,
       status: _StaffStatus.inactive,
     ),
   ];
+  final List<_Salesman> _salesmen = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribeSalesmen();
+  }
 
   @override
   void dispose() {
+    _salesmenSub?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _subscribeSalesmen() {
+    _salesmenSub?.cancel();
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    _salesmenSub = _firestore
+        .collection(FirestoreCollections.staffSalesmen)
+        .orderBy('nameLower')
+        .snapshots()
+        .listen(
+          (snapshot) {
+            final items = snapshot.docs
+                .map(_salesmanFromDoc)
+                .whereType<_Salesman>()
+                .toList();
+            if (items.isEmpty && _seedSalesmen.isNotEmpty) {
+              // Keep reference to sample data for optional future seeding tools.
+            }
+            if (!mounted) return;
+            setState(() {
+              _salesmen
+                ..clear()
+                ..addAll(items);
+              _selectedIds.removeWhere(
+                (id) => !_salesmen.any((item) => item.id == id),
+              );
+              if (_currentPage > _totalPages) {
+                _currentPage = _totalPages;
+              }
+              _loading = false;
+              _loadError = null;
+            });
+          },
+          onError: (error) {
+            if (!mounted) return;
+            setState(() {
+              _loading = false;
+              _loadError = '$error';
+            });
+          },
+        );
+  }
+
+  _Salesman? _salesmanFromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    if (data == null) return null;
+    final id = _stringOr(data['id'], fallback: doc.id).trim();
+    if (id.isEmpty) return null;
+    return _Salesman(
+      id: id,
+      name: _stringOr(data['name'], fallback: 'Unknown'),
+      role: _stringOr(data['role'], fallback: 'Salesman'),
+      region: _stringOr(data['region'], fallback: ''),
+      phone: _stringOr(data['phone'], fallback: ''),
+      email: _stringOr(data['email'], fallback: ''),
+      imageUrl: _nullableString(data['imageUrl']),
+      dealsClosed: _intOr(data['dealsClosed']),
+      monthlyTargetQar: _doubleOr(data['monthlyTargetQar']),
+      achievedSalesQar: _doubleOr(data['achievedSalesQar']),
+      status: _statusFromString(_stringOr(data['status'], fallback: 'active')),
+    );
+  }
+
+  Future<void> _createSalesman(_Salesman salesman) async {
+    final docRef = _firestore
+        .collection(FirestoreCollections.staffSalesmen)
+        .doc(salesman.id);
+    await _firestore.runTransaction((transaction) async {
+      final existing = await transaction.get(docRef);
+      if (existing.exists) {
+        throw StateError('Salesman ID already exists.');
+      }
+      transaction.set(docRef, _salesmanToMap(salesman, create: true));
+    });
+  }
+
+  Future<void> _updateSalesman(_Salesman salesman) async {
+    final docRef = _firestore
+        .collection(FirestoreCollections.staffSalesmen)
+        .doc(salesman.id);
+    await docRef.set(_salesmanToMap(salesman), SetOptions(merge: true));
+  }
+
+  Future<void> _deleteSalesmenByIds(Set<String> ids) async {
+    if (ids.isEmpty) return;
+    final batch = _firestore.batch();
+    for (final id in ids) {
+      batch.delete(
+        _firestore.collection(FirestoreCollections.staffSalesmen).doc(id),
+      );
+    }
+    await batch.commit();
+  }
+
+  Map<String, dynamic> _salesmanToMap(_Salesman salesman, {bool create = false}) {
+    final now = FieldValue.serverTimestamp();
+    return {
+      'id': salesman.id,
+      'name': salesman.name,
+      'nameLower': salesman.name.toLowerCase(),
+      'role': salesman.role,
+      'region': salesman.region,
+      'phone': salesman.phone,
+      'email': salesman.email,
+      'imageUrl': salesman.imageUrl,
+      'dealsClosed': salesman.dealsClosed,
+      'monthlyTargetQar': salesman.monthlyTargetQar,
+      'achievedSalesQar': salesman.achievedSalesQar,
+      'status': _statusToString(salesman.status),
+      'updatedAt': now,
+      if (create) 'createdAt': now,
+    };
+  }
+
+  String _stringOr(dynamic value, {String fallback = ''}) {
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+    return fallback;
+  }
+
+  String? _nullableString(dynamic value) {
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+    return null;
+  }
+
+  int _intOr(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse('$value') ?? 0;
+  }
+
+  double _doubleOr(dynamic value) {
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+    return double.tryParse('$value') ?? 0;
+  }
+
+  _StaffStatus _statusFromString(String raw) {
+    switch (raw.toLowerCase()) {
+      case 'on_leave':
+      case 'onleave':
+        return _StaffStatus.onLeave;
+      case 'inactive':
+        return _StaffStatus.inactive;
+      default:
+        return _StaffStatus.active;
+    }
+  }
+
+  String _statusToString(_StaffStatus status) {
+    switch (status) {
+      case _StaffStatus.active:
+        return 'active';
+      case _StaffStatus.onLeave:
+        return 'on_leave';
+      case _StaffStatus.inactive:
+        return 'inactive';
+    }
   }
 
   List<_Salesman> get _filteredSalesmen {
@@ -349,9 +569,14 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                   child: const Text('Select All'),
                 ),
                 TextButton.icon(
-                  onPressed: selectedCount == 0 ? null : () {},
+                  onPressed: selectedCount == 0 ? null : _deactivateSelectedStaff,
                   icon: const Icon(Iconsax.user_minus, size: 16),
                   label: const Text('Deactivate'),
+                ),
+                TextButton.icon(
+                  onPressed: selectedCount == 0 ? null : _deleteSelectedStaff,
+                  icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                  label: const Text('Delete Selected'),
                 ),
               ],
             ),
@@ -363,7 +588,39 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
-                child: visible.isEmpty
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _loadError != null
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Failed to load salesmen from Firebase.',
+                              style: TextStyle(
+                                color: Color(0xFFB42318),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _loadError!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Color(0xFF6B7280),
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              onPressed: _subscribeSalesmen,
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : visible.isEmpty
                     ? const Center(
                         child: Text(
                           'No staff found.',
@@ -394,7 +651,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Staff List',
+                'Salesman List',
                 style: TextStyle(
                   fontSize: 30,
                   height: 1.1,
@@ -404,7 +661,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
               ),
               SizedBox(height: 4),
               Text(
-                'Monitor sales team performance, targets, and status.',
+                'Monitor staff salesmen performance, targets, and status.',
                 style: TextStyle(
                   color: Color(0xFF8A94A6),
                   fontWeight: FontWeight.w500,
@@ -415,7 +672,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
         ),
         if (!compact)
           _headerActionButton(
-            onTap: () {},
+            onTap: _addSalesman,
             icon: Icons.add_rounded,
             label: 'Add Salesman',
             highlighted: true,
@@ -573,7 +830,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
             _HeaderCell(width: 152, text: 'Target (QAR)'),
             _HeaderCell(width: 160, text: 'Achieved (QAR)'),
             _HeaderCell(width: 132, text: 'Status'),
-            _HeaderCell(width: 90, text: 'Action'),
+            _HeaderCell(width: 132, text: 'Action'),
           ],
         ),
       ),
@@ -615,14 +872,19 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                   CircleAvatar(
                     radius: 15,
                     backgroundColor: const Color(0xFFE8EDF5),
-                    child: Text(
-                      _initialsOf(salesman.name),
-                      style: const TextStyle(
-                        color: Color(0xFF4B5563),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    backgroundImage: salesman.imageUrl == null
+                        ? null
+                        : NetworkImage(salesman.imageUrl!),
+                    child: salesman.imageUrl == null
+                        ? Text(
+                            _initialsOf(salesman.name),
+                            style: const TextStyle(
+                              color: Color(0xFF4B5563),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          )
+                        : null,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -708,11 +970,11 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
               ),
             ),
             SizedBox(
-              width: 90,
+              width: 132,
               child: Row(
                 children: [
                   IconButton(
-                    onPressed: () {},
+                    onPressed: () => _editSalesman(salesman),
                     icon: const Icon(
                       Icons.edit_outlined,
                       size: 18,
@@ -720,7 +982,17 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                     ),
                   ),
                   IconButton(
-                    onPressed: () {},
+                    onPressed: salesman.imageUrl == null
+                        ? null
+                        : () => _removeStaffImage(salesman),
+                    icon: const Icon(
+                      Icons.image_not_supported_outlined,
+                      size: 18,
+                      color: Color(0xFFB08900),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => _deleteStaff(salesman),
                     icon: const Icon(
                       Icons.delete_outline_rounded,
                       size: 18,
@@ -774,14 +1046,19 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                   CircleAvatar(
                     radius: 16,
                     backgroundColor: const Color(0xFFE8EDF5),
-                    child: Text(
-                      _initialsOf(salesman.name),
-                      style: const TextStyle(
-                        color: Color(0xFF4B5563),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    backgroundImage: salesman.imageUrl == null
+                        ? null
+                        : NetworkImage(salesman.imageUrl!),
+                    child: salesman.imageUrl == null
+                        ? Text(
+                            _initialsOf(salesman.name),
+                            style: const TextStyle(
+                              color: Color(0xFF4B5563),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          )
+                        : null,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -839,15 +1116,33 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
               Row(
                 children: [
                   OutlinedButton.icon(
-                    onPressed: () {},
+                    onPressed: () => _editSalesman(salesman),
                     icon: const Icon(Icons.edit_outlined, size: 16),
                     label: const Text('Edit'),
                   ),
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
-                    onPressed: () {},
+                    onPressed: salesman.imageUrl == null
+                        ? null
+                        : () => _removeStaffImage(salesman),
+                    icon: const Icon(Icons.image_not_supported_outlined, size: 16),
+                    label: const Text('Delete Image'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _deleteStaff(salesman),
+                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                    label: const Text('Delete'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _toggleDeactivateStaff(salesman),
                     icon: const Icon(Iconsax.user_minus, size: 16),
-                    label: const Text('Deactivate'),
+                    label: Text(
+                      salesman.status == _StaffStatus.inactive
+                          ? 'Activate'
+                          : 'Deactivate',
+                    ),
                   ),
                 ],
               ),
@@ -990,6 +1285,220 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
     );
   }
 
+  Future<void> _addSalesman() async {
+    final created = await _showSalesmanEditorDialog();
+    if (created == null) return;
+    try {
+      await _createSalesman(created);
+      if (!mounted) return;
+      setState(() => _currentPage = 1);
+      _toast('Added ${created.name}.');
+    } catch (error) {
+      if (!mounted) return;
+      _toast('Failed to add salesman: $error');
+    }
+  }
+
+  Future<void> _editSalesman(_Salesman staff) async {
+    final updated = await _showSalesmanEditorDialog(existing: staff);
+    if (updated == null) return;
+    try {
+      await _updateSalesman(updated);
+      if (!mounted) return;
+      _toast('Updated ${updated.name}.');
+    } catch (error) {
+      if (!mounted) return;
+      _toast('Failed to update salesman: $error');
+    }
+  }
+
+  Future<void> _deactivateSelectedStaff() async {
+    final ids = Set<String>.from(_selectedIds);
+    if (ids.isEmpty) return;
+    final confirmed = await _showRightSheet<bool>(
+      title: 'Deactivate Selected',
+      icon: Iconsax.user_minus,
+      body: Text('Deactivate ${ids.length} selected staff member(s)?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Deactivate'),
+        ),
+      ],
+    );
+    if (confirmed != true) return;
+
+    try {
+      final batch = _firestore.batch();
+      for (final id in ids) {
+        batch.set(
+          _firestore.collection(FirestoreCollections.staffSalesmen).doc(id),
+          {
+            'status': _statusToString(_StaffStatus.inactive),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+      await batch.commit();
+      if (!mounted) return;
+      _toast('Selected staff deactivated.');
+    } catch (error) {
+      if (!mounted) return;
+      _toast('Failed to deactivate selected staff: $error');
+    }
+  }
+
+  Future<void> _toggleDeactivateStaff(_Salesman staff) async {
+    final shouldDeactivate = staff.status != _StaffStatus.inactive;
+    final confirmed = await _showRightSheet<bool>(
+      title: shouldDeactivate ? 'Deactivate Staff' : 'Activate Staff',
+      icon: shouldDeactivate ? Iconsax.user_minus : Iconsax.user_add,
+      body: Text(
+        shouldDeactivate ? 'Deactivate ${staff.name}?' : 'Activate ${staff.name}?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(shouldDeactivate ? 'Deactivate' : 'Activate'),
+        ),
+      ],
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _firestore
+          .collection(FirestoreCollections.staffSalesmen)
+          .doc(staff.id)
+          .set({
+            'status': _statusToString(
+              shouldDeactivate ? _StaffStatus.inactive : _StaffStatus.active,
+            ),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      if (!mounted) return;
+      _toast(shouldDeactivate ? 'Staff deactivated.' : 'Staff activated.');
+    } catch (error) {
+      if (!mounted) return;
+      _toast('Failed to update status: $error');
+    }
+  }
+
+  Future<void> _deleteStaff(_Salesman staff) async {
+    final confirmed = await _showRightSheet<bool>(
+      title: 'Delete Salesman',
+      icon: Icons.delete_outline_rounded,
+      iconColor: const Color(0xFFE65A5A),
+      body: Text(
+        'Delete ${staff.name} from the salesman list?\n\nAny linked profile image will also be removed.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65A5A)),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Delete'),
+        ),
+      ],
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _deleteSalesmenByIds({staff.id});
+      if (!mounted) return;
+      _toast('Deleted ${staff.name}.');
+    } catch (error) {
+      if (!mounted) return;
+      _toast('Failed to delete salesman: $error');
+    }
+  }
+
+  Future<void> _deleteSelectedStaff() async {
+    final ids = Set<String>.from(_selectedIds);
+    if (ids.isEmpty) return;
+    final count = ids.length;
+    final confirmed = await _showRightSheet<bool>(
+      title: 'Delete Selected',
+      icon: Icons.delete_sweep_outlined,
+      iconColor: const Color(0xFFE65A5A),
+      body: Text(
+        'Delete $count selected salesman account(s)?\n\nLinked images will also be removed.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65A5A)),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Delete'),
+        ),
+      ],
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _deleteSalesmenByIds(ids);
+      if (!mounted) return;
+      _toast('Deleted $count salesman account(s).');
+    } catch (error) {
+      if (!mounted) return;
+      _toast('Failed to delete selected staff: $error');
+    }
+  }
+
+  Future<void> _removeStaffImage(_Salesman staff) async {
+    if (staff.imageUrl == null) return;
+    final confirmed = await _showRightSheet<bool>(
+      title: 'Delete Staff Image',
+      icon: Icons.image_not_supported_outlined,
+      iconColor: const Color(0xFFB08900),
+      body: Text('Remove profile image for ${staff.name}?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Delete Image'),
+        ),
+      ],
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _firestore
+          .collection(FirestoreCollections.staffSalesmen)
+          .doc(staff.id)
+          .set({
+            'imageUrl': null,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      if (!mounted) return;
+      _toast('Image removed for ${staff.name}.');
+    } catch (error) {
+      if (!mounted) return;
+      _toast('Failed to remove image: $error');
+    }
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   (Color, Color, Color, String) _statusStyle(_StaffStatus status) {
     switch (status) {
       case _StaffStatus.active:
@@ -1022,6 +1531,380 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
     if (parts.length == 1) return parts.first.characters.first.toUpperCase();
     return '${parts.first.characters.first}${parts.last.characters.first}'
         .toUpperCase();
+  }
+
+  Future<_Salesman?> _showSalesmanEditorDialog({_Salesman? existing}) async {
+    final nameController = TextEditingController(text: existing?.name ?? '');
+    final roleController = TextEditingController(
+      text: existing?.role ?? 'Salesman',
+    );
+    final regionController = TextEditingController(text: existing?.region ?? '');
+    final phoneController = TextEditingController(text: existing?.phone ?? '');
+    final emailController = TextEditingController(text: existing?.email ?? '');
+    final dealsController = TextEditingController(
+      text: (existing?.dealsClosed ?? 0).toString(),
+    );
+    final targetController = TextEditingController(
+      text: (existing?.monthlyTargetQar ?? 0).toStringAsFixed(0),
+    );
+    final achievedController = TextEditingController(
+      text: (existing?.achievedSalesQar ?? 0).toStringAsFixed(0),
+    );
+    final imageUrlController = TextEditingController(
+      text: existing?.imageUrl ?? '',
+    );
+    _StaffStatus status = existing?.status ?? _StaffStatus.active;
+    final formKey = GlobalKey<FormState>();
+
+    final result = await _showRightSheet<_Salesman>(
+      title: existing == null ? 'Add Salesman' : 'Edit Salesman',
+      icon: existing == null ? Icons.person_add_alt_1 : Icons.edit_outlined,
+      body: StatefulBuilder(
+        builder: (context, setDialogState) => Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE5EAF1)),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 22,
+                      backgroundColor: const Color(0xFFE8EDF5),
+                      backgroundImage: imageUrlController.text.trim().isEmpty
+                          ? null
+                          : NetworkImage(imageUrlController.text.trim()),
+                      child: imageUrlController.text.trim().isEmpty
+                          ? Text(
+                              _initialsOf(
+                                nameController.text.trim().isEmpty
+                                    ? 'Staff'
+                                    : nameController.text.trim(),
+                              ),
+                              style: const TextStyle(
+                                color: Color(0xFF4B5563),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            nameController.text.trim().isEmpty
+                                ? 'New Salesman'
+                                : nameController.text.trim(),
+                            style: const TextStyle(
+                              color: Color(0xFF111827),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            emailController.text.trim().isEmpty
+                                ? 'No email yet'
+                                : emailController.text.trim(),
+                            style: const TextStyle(
+                              color: Color(0xFF6B7280),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _sheetSection(
+                title: 'Identity',
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: nameController,
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: const InputDecoration(labelText: 'Name'),
+                      validator: (value) =>
+                          (value ?? '').trim().isEmpty ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: roleController,
+                      decoration: const InputDecoration(labelText: 'Role'),
+                      validator: (value) =>
+                          (value ?? '').trim().isEmpty ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: regionController,
+                      decoration: const InputDecoration(labelText: 'Region'),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<_StaffStatus>(
+                      initialValue: status,
+                      decoration: const InputDecoration(labelText: 'Status'),
+                      items: const [
+                        DropdownMenuItem(
+                          value: _StaffStatus.active,
+                          child: Text('Active'),
+                        ),
+                        DropdownMenuItem(
+                          value: _StaffStatus.onLeave,
+                          child: Text('On Leave'),
+                        ),
+                        DropdownMenuItem(
+                          value: _StaffStatus.inactive,
+                          child: Text('Inactive'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setDialogState(() => status = value);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _sheetSection(
+                title: 'Contact',
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: phoneController,
+                      decoration: const InputDecoration(labelText: 'Phone'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: emailController,
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: const InputDecoration(labelText: 'Email'),
+                      validator: (value) {
+                        final email = (value ?? '').trim();
+                        if (email.isEmpty) return 'Required';
+                        if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+                          return 'Invalid email';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: imageUrlController,
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: const InputDecoration(
+                        labelText: 'Image URL (optional)',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _sheetSection(
+                title: 'Performance',
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: dealsController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Deals Closed'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: targetController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Target (QAR)'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: achievedController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Achieved Sales (QAR)',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          onPressed: () {
+            if (!(formKey.currentState?.validate() ?? false)) return;
+            final deals = int.tryParse(dealsController.text.trim()) ?? 0;
+            final target = double.tryParse(targetController.text.trim()) ?? 0;
+            final achieved = double.tryParse(achievedController.text.trim()) ?? 0;
+            final imageUrl = imageUrlController.text.trim();
+            final id = existing?.id ?? _nextSalesmanId();
+            Navigator.of(context).pop(
+              _Salesman(
+                id: id,
+                name: nameController.text.trim(),
+                role: roleController.text.trim(),
+                region: regionController.text.trim(),
+                phone: phoneController.text.trim(),
+                email: emailController.text.trim(),
+                imageUrl: imageUrl.isEmpty ? null : imageUrl,
+                dealsClosed: deals,
+                monthlyTargetQar: target,
+                achievedSalesQar: achieved,
+                status: status,
+              ),
+            );
+          },
+          icon: Icon(
+            existing == null ? Icons.person_add_alt_1 : Icons.check_rounded,
+            size: 16,
+          ),
+          label: Text(existing == null ? 'Add' : 'Save'),
+        ),
+      ],
+    );
+
+    return result;
+  }
+
+  Widget _sheetSection({required String title, required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE5EAF1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFF111827),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          child,
+        ],
+      ),
+    );
+  }
+
+  String _nextSalesmanId() {
+    int maxId = 0;
+    for (final salesman in _salesmen) {
+      final match = RegExp(r'^SM-(\d+)$').firstMatch(salesman.id);
+      if (match == null) continue;
+      final value = int.tryParse(match.group(1) ?? '');
+      if (value != null && value > maxId) {
+        maxId = value;
+      }
+    }
+    final next = maxId + 1;
+    return 'SM-${next.toString().padLeft(3, '0')}';
+  }
+
+  Future<T?> _showRightSheet<T>({
+    required String title,
+    required IconData icon,
+    required Widget body,
+    required List<Widget> actions,
+    Color iconColor = const Color(0xFF111827),
+  }) {
+    return showGeneralDialog<T>(
+      context: context,
+      barrierLabel: title,
+      barrierDismissible: true,
+      barrierColor: const Color(0x99000000),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.white,
+            borderRadius: const BorderRadius.horizontal(left: Radius.circular(18)),
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width > 620
+                  ? 540
+                  : MediaQuery.of(context).size.width * 0.92,
+              height: double.infinity,
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 10, 12),
+                      child: Row(
+                        children: [
+                          Icon(icon, size: 20, color: iconColor),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF111827),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1, color: Color(0xFFE5E8EE)),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                        child: body,
+                      ),
+                    ),
+                    const Divider(height: 1, color: Color(0xFFE5E8EE)),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: actions,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
   }
 }
 

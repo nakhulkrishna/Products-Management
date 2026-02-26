@@ -378,6 +378,8 @@ class _BulkUploadProductsViewState extends State<BulkUploadProductsView> {
     });
 
     try {
+      // Allow one frame so the parsing state is rendered before heavy work.
+      await Future<void>.delayed(Duration.zero);
       final parsed = _parseZipBytes(zipBytes);
       if (!mounted) return;
       setState(() {

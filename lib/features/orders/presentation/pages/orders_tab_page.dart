@@ -1,6 +1,10 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
+import 'package:products_catelogs/core/constants/firestore_collections.dart';
 
 enum _OrderStatus { delivered, processing, cancelled }
 
@@ -9,6 +13,7 @@ enum _PaymentStatus { paid, pending, failed }
 enum _OrderFilter { all, delivered, processing, cancelled }
 
 class _Order {
+  final String docId;
   final String id;
   final String customerName;
   final String salesmanName;
@@ -20,6 +25,7 @@ class _Order {
   final _OrderStatus orderStatus;
 
   const _Order({
+    this.docId = '',
     required this.id,
     required this.customerName,
     required this.salesmanName,
@@ -42,6 +48,7 @@ class OrdersTabPage extends StatefulWidget {
 class _OrdersTabPageState extends State<OrdersTabPage> {
   static const int _rowsPerPage = 13;
 
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _searchController = TextEditingController();
   final NumberFormat _currency = NumberFormat.currency(
     locale: 'en_QA',
@@ -53,6 +60,9 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
   String _query = '';
   _OrderFilter _statusFilter = _OrderFilter.all;
   int _currentPage = 1;
+  bool _loading = true;
+  String? _loadError;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ordersSub;
   final Set<String> _selectedIds = <String>{};
 
   static final List<_Order> _orders = [
@@ -202,9 +212,59 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _orders.clear();
+    _subscribeOrders();
+  }
+
+  @override
   void dispose() {
+    _ordersSub?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _subscribeOrders() {
+    _ordersSub?.cancel();
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+
+    _ordersSub = _firestore
+        .collection(FirestoreCollections.orders)
+        .snapshots()
+        .listen(
+          (snapshot) {
+            final items = snapshot.docs
+                .map(_orderFromDoc)
+                .whereType<_Order>()
+                .toList();
+            items.sort((a, b) => b.orderDate.compareTo(a.orderDate));
+            if (!mounted) return;
+            setState(() {
+              _orders
+                ..clear()
+                ..addAll(items);
+              _selectedIds.removeWhere(
+                (id) => !_orders.any((order) => order.id == id),
+              );
+              if (_currentPage > _totalPages) {
+                _currentPage = _totalPages;
+              }
+              _loading = false;
+              _loadError = null;
+            });
+          },
+          onError: (error) {
+            if (!mounted) return;
+            setState(() {
+              _loading = false;
+              _loadError = '$error';
+            });
+          },
+        );
   }
 
   List<_Order> get _filteredOrders {
@@ -335,7 +395,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                   child: const Text('Select All'),
                 ),
                 TextButton.icon(
-                  onPressed: selectedCount == 0 ? null : () {},
+                  onPressed: selectedCount == 0 ? null : _deleteSelectedOrders,
                   icon: const Icon(Iconsax.trash, size: 16),
                   label: const Text('Delete'),
                 ),
@@ -349,7 +409,39 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
-                child: visible.isEmpty
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _loadError != null
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Failed to load orders from Firebase.',
+                              style: TextStyle(
+                                color: Color(0xFFB42318),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _loadError!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Color(0xFF6B7280),
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              onPressed: _subscribeOrders,
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : visible.isEmpty
                     ? const Center(
                         child: Text(
                           'No orders found.',
@@ -678,7 +770,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                     ),
                   ),
                   IconButton(
-                    onPressed: () {},
+                    onPressed: () => _deleteOrder(order),
                     icon: const Icon(
                       Icons.delete_outline_rounded,
                       size: 18,
@@ -823,7 +915,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                   ),
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
-                    onPressed: () {},
+                    onPressed: () => _deleteOrder(order),
                     icon: const Icon(
                       Icons.delete_outline_rounded,
                       size: 16,
@@ -973,6 +1065,155 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
         ),
       ),
     );
+  }
+
+  _Order? _orderFromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    if (data == null) return null;
+    final id = _stringOr(data['id'], fallback: doc.id).trim();
+    if (id.isEmpty) return null;
+    return _Order(
+      docId: doc.id,
+      id: id,
+      customerName: _stringOr(data['customerName'], fallback: 'Unknown Customer'),
+      salesmanName: _stringOr(data['salesmanName'], fallback: 'Unknown'),
+      orderDate: _dateOrNow(data['orderDate']),
+      itemsCount: _intOr(data['itemsCount']),
+      channel: _stringOr(data['channel'], fallback: 'Direct'),
+      amountQar: _doubleOr(data['amountQar']),
+      paymentStatus: _paymentStatusFromString(
+        _stringOr(data['paymentStatus'], fallback: 'pending'),
+      ),
+      orderStatus: _orderStatusFromString(
+        _stringOr(data['orderStatus'], fallback: 'processing'),
+      ),
+    );
+  }
+
+  Future<void> _deleteOrder(_Order order) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Order'),
+        content: Text('Delete order ${order.id}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (shouldDelete != true) return;
+
+    try {
+      await _firestore
+          .collection(FirestoreCollections.orders)
+          .doc(order.docId.isEmpty ? order.id : order.docId)
+          .delete();
+      if (!mounted) return;
+      _toast('Order ${order.id} deleted.');
+    } catch (error) {
+      if (!mounted) return;
+      _toast('Failed to delete order: $error');
+    }
+  }
+
+  Future<void> _deleteSelectedOrders() async {
+    final ids = Set<String>.from(_selectedIds);
+    if (ids.isEmpty) return;
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Selected Orders'),
+        content: Text('Delete ${ids.length} selected order(s)?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (shouldDelete != true) return;
+
+    try {
+      final batch = _firestore.batch();
+      final targets = _orders.where((order) => ids.contains(order.id));
+      for (final order in targets) {
+        final docId = order.docId.isEmpty ? order.id : order.docId;
+        batch.delete(_firestore.collection(FirestoreCollections.orders).doc(docId));
+      }
+      await batch.commit();
+      if (!mounted) return;
+      setState(() => _selectedIds.clear());
+      _toast('Deleted ${ids.length} order(s).');
+    } catch (error) {
+      if (!mounted) return;
+      _toast('Failed to delete selected orders: $error');
+    }
+  }
+
+  String _stringOr(dynamic value, {String fallback = ''}) {
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+    return fallback;
+  }
+
+  int _intOr(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse('$value') ?? 0;
+  }
+
+  double _doubleOr(dynamic value) {
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+    return double.tryParse('$value') ?? 0;
+  }
+
+  DateTime _dateOrNow(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) return parsed;
+    }
+    return DateTime.now();
+  }
+
+  _PaymentStatus _paymentStatusFromString(String raw) {
+    switch (raw.toLowerCase()) {
+      case 'paid':
+        return _PaymentStatus.paid;
+      case 'failed':
+        return _PaymentStatus.failed;
+      default:
+        return _PaymentStatus.pending;
+    }
+  }
+
+  _OrderStatus _orderStatusFromString(String raw) {
+    switch (raw.toLowerCase()) {
+      case 'delivered':
+        return _OrderStatus.delivered;
+      case 'cancelled':
+      case 'canceled':
+        return _OrderStatus.cancelled;
+      default:
+        return _OrderStatus.processing;
+    }
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _initialsOf(String name) {

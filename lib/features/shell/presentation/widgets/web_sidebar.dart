@@ -1,19 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/core/constants/app_images.dart';
-import 'package:products_catelogs/core/constants/app_strings.dart';
 import 'package:products_catelogs/features/products/application/bulk_upload_background_service.dart';
 import 'package:products_catelogs/features/shell/domain/sidebar_tab.dart';
 
 class WebShellScaffold extends StatelessWidget {
   final SidebarTab activeTab;
   final ValueChanged<SidebarTab> onTabSelected;
+  final VoidCallback onLogout;
+  final VoidCallback onOpenSettings;
+  final ValueChanged<String> onSearchSubmitted;
+  final String userName;
+  final String userSubtitle;
   final Widget body;
 
   const WebShellScaffold({
     super.key,
     required this.activeTab,
     required this.onTabSelected,
+    required this.onLogout,
+    required this.onOpenSettings,
+    required this.onSearchSubmitted,
+    required this.userName,
+    required this.userSubtitle,
     required this.body,
   });
 
@@ -46,6 +55,7 @@ class WebShellScaffold extends StatelessWidget {
                   _IconRail(
                     activeTab: activeTab,
                     onTabSelected: onTabSelected,
+                    onLogout: onLogout,
                     compact: isCompact,
                   ),
                   Expanded(
@@ -55,6 +65,11 @@ class WebShellScaffold extends StatelessWidget {
                           title: activeTab.label,
                           compact: isCompact,
                           narrow: isNarrow,
+                          onOpenSettings: onOpenSettings,
+                          onSearchSubmitted: onSearchSubmitted,
+                          onLogout: onLogout,
+                          userName: userName,
+                          userSubtitle: userSubtitle,
                         ),
                         const Divider(height: 1, color: Color(0xFFE8EBF0)),
                         Expanded(
@@ -79,11 +94,13 @@ class WebShellScaffold extends StatelessWidget {
 class _IconRail extends StatelessWidget {
   final SidebarTab activeTab;
   final ValueChanged<SidebarTab> onTabSelected;
+  final VoidCallback onLogout;
   final bool compact;
 
   const _IconRail({
     required this.activeTab,
     required this.onTabSelected,
+    required this.onLogout,
     required this.compact,
   });
 
@@ -139,7 +156,7 @@ class _IconRail extends StatelessWidget {
               icon: Iconsax.logout,
               selected: false,
               compact: compact,
-              onTap: () {},
+              onTap: onLogout,
             ),
             const SizedBox(height: 12),
           ],
@@ -197,30 +214,58 @@ class _IconRailItem extends StatelessWidget {
   }
 }
 
-class _TopAppBar extends StatelessWidget {
+class _TopAppBar extends StatefulWidget {
   final String title;
   final bool compact;
   final bool narrow;
+  final VoidCallback onOpenSettings;
+  final ValueChanged<String> onSearchSubmitted;
+  final VoidCallback onLogout;
+  final String userName;
+  final String userSubtitle;
 
   const _TopAppBar({
     required this.title,
     required this.compact,
     required this.narrow,
+    required this.onOpenSettings,
+    required this.onSearchSubmitted,
+    required this.onLogout,
+    required this.userName,
+    required this.userSubtitle,
   });
 
   @override
+  State<_TopAppBar> createState() => _TopAppBarState();
+}
+
+class _TopAppBarState extends State<_TopAppBar> {
+  final TextEditingController _searchController = TextEditingController();
+  final List<String> _notifications = <String>[
+    'New order placed: ORD-5301',
+    'Bulk upload completed successfully',
+    'Low stock warning for 4 products',
+  ];
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final titleSize = narrow ? 21.0 : 28.0;
+    final titleSize = widget.narrow ? 21.0 : 28.0;
 
     return SizedBox(
-      height: narrow ? 64 : 72,
+      height: widget.narrow ? 64 : 72,
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: narrow ? 12 : 20),
+        padding: EdgeInsets.symmetric(horizontal: widget.narrow ? 12 : 20),
         child: Row(
           children: [
             Expanded(
               child: Text(
-                title,
+                widget.title,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: titleSize,
@@ -229,16 +274,31 @@ class _TopAppBar extends StatelessWidget {
                 ),
               ),
             ),
-            if (!narrow) ...[
+            if (!widget.narrow) ...[
               const _BackgroundUploadBadge(),
               const SizedBox(width: 10),
               ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: compact ? 180 : 260),
+                constraints: BoxConstraints(
+                  maxWidth: widget.compact ? 180 : 260,
+                ),
                 child: TextField(
+                  controller: _searchController,
+                  onSubmitted: (value) {
+                    widget.onSearchSubmitted(value.trim());
+                  },
                   decoration: InputDecoration(
                     isDense: true,
-                    hintText: 'Search',
+                    hintText: 'Search and jump...',
                     prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                    suffixIcon: _searchController.text.trim().isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.close_rounded, size: 16),
+                          ),
                     contentPadding: const EdgeInsets.symmetric(vertical: 10),
                     fillColor: const Color(0xFFF7F8FA),
                     border: OutlineInputBorder(
@@ -254,17 +314,39 @@ class _TopAppBar extends StatelessWidget {
                       borderSide: const BorderSide(color: Color(0xFF44A5A2)),
                     ),
                   ),
+                  onChanged: (_) => setState(() {}),
                 ),
               ),
               const SizedBox(width: 10),
             ],
-            const _TopIconButton(icon: Icons.notifications_none_rounded),
+            _TopIconButton(
+              icon: Icons.notifications_none_rounded,
+              onTap: _openNotificationsSheet,
+            ),
             const SizedBox(width: 8),
-            const _TopIconButton(icon: Icons.settings_outlined),
-            SizedBox(width: narrow ? 8 : 14),
+            _TopIconButton(
+              icon: Icons.settings_outlined,
+              onTap: widget.onOpenSettings,
+            ),
+            SizedBox(width: widget.narrow ? 8 : 14),
             Container(width: 1, height: 26, color: const Color(0xFFE8EBF0)),
             const SizedBox(width: 12),
-            Row(
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                switch (value) {
+                  case 'settings':
+                    widget.onOpenSettings();
+                    break;
+                  case 'logout':
+                    widget.onLogout();
+                    break;
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'settings', child: Text('Settings')),
+                PopupMenuItem(value: 'logout', child: Text('Logout')),
+              ],
+              child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const CircleAvatar(
@@ -272,24 +354,24 @@ class _TopAppBar extends StatelessWidget {
                   backgroundColor: Color(0xFFDCE6EA),
                   child: Icon(Icons.person_rounded, color: Color(0xFF4C596D)),
                 ),
-                if (!compact) ...[
+                if (!widget.compact) ...[
                   const SizedBox(width: 10),
                   Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
+                    children: [
                       Text(
-                        'ArtTemplate',
-                        style: TextStyle(
+                        widget.userName,
+                        style: const TextStyle(
                           color: Color(0xFF1A1F29),
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
                         ),
                       ),
-                      SizedBox(height: 1),
+                      const SizedBox(height: 1),
                       Text(
-                        AppStrings.appTagline,
-                        style: TextStyle(
+                        widget.userSubtitle,
+                        style: const TextStyle(
                           color: Color(0xFF7D8592),
                           fontWeight: FontWeight.w500,
                           fontSize: 11,
@@ -305,9 +387,109 @@ class _TopAppBar extends StatelessWidget {
                 ],
               ],
             ),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  void _openNotificationsSheet() {
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Notifications',
+      barrierColor: const Color(0x88000000),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.white,
+            borderRadius: const BorderRadius.horizontal(
+              left: Radius.circular(18),
+            ),
+            child: SizedBox(
+              width: 420,
+              height: double.infinity,
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Notifications',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF111827),
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setState(() => _notifications.clear());
+                            },
+                            child: const Text('Clear'),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1, color: Color(0xFFE8EBF0)),
+                    Expanded(
+                      child: _notifications.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No new notifications.',
+                                style: TextStyle(
+                                  color: Color(0xFF6B7280),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: _notifications.length,
+                              separatorBuilder: (_, __) => const Divider(
+                                height: 1,
+                                color: Color(0xFFE8EBF0),
+                              ),
+                              itemBuilder: (context, index) {
+                                return ListTile(
+                                  leading: const Icon(
+                                    Icons.notifications_active_outlined,
+                                  ),
+                                  title: Text(_notifications[index]),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
     );
   }
 }
@@ -376,14 +558,15 @@ class _BackgroundUploadBadge extends StatelessWidget {
 
 class _TopIconButton extends StatelessWidget {
   final IconData icon;
+  final VoidCallback onTap;
 
-  const _TopIconButton({required this.icon});
+  const _TopIconButton({required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       borderRadius: BorderRadius.circular(10),
-      onTap: () {},
+      onTap: onTap,
       child: Ink(
         width: 34,
         height: 34,

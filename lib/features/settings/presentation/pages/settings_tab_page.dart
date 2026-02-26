@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 
 class SettingsTabPage extends StatefulWidget {
-  const SettingsTabPage({super.key});
+  final VoidCallback? onLogout;
+
+  const SettingsTabPage({super.key, this.onLogout});
 
   @override
   State<SettingsTabPage> createState() => _SettingsTabPageState();
@@ -13,9 +15,45 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   bool _emailNotifications = true;
   bool _smsNotifications = false;
   bool _weeklyDigest = true;
+  bool _deactivated = false;
 
+  String _currency = 'QAR';
   String _language = 'English';
   String _timezone = 'Asia/Qatar (GMT+3)';
+
+  String _fullName = 'Sales Manager';
+  String _email = 'manager@redrose.com';
+  String _role = 'Sales Manager';
+  String _phone = '+974 5500 1122';
+  String _region = 'Doha';
+  String _department = 'Commercial';
+
+  int _failedOrderAlertMinutes = 10;
+  int _lowStockThreshold = 20;
+
+  final Map<String, bool> _permissions = {
+    'Products': true,
+    'Orders': true,
+    'Staff': false,
+    'Settings': true,
+  };
+
+  final List<_SessionInfo> _sessions = [
+    const _SessionInfo(
+      id: 's1',
+      device: 'Chrome on macOS',
+      location: 'Doha',
+      isCurrent: true,
+      lastActive: 'Now',
+    ),
+    const _SessionInfo(
+      id: 's2',
+      device: 'Safari on iPhone',
+      location: 'Doha',
+      isCurrent: false,
+      lastActive: '2 hours ago',
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -52,9 +90,9 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               const SizedBox(height: 12),
               _buildSecuritySection(isNarrow),
               const SizedBox(height: 12),
-              _buildNotificationSection(isNarrow),
+              _buildNotificationSection(),
               const SizedBox(height: 12),
-              _buildPreferenceSection(isNarrow),
+              _buildPreferenceSection(),
               const SizedBox(height: 12),
               _buildDangerZone(),
             ],
@@ -102,32 +140,35 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         children: [
           Row(
             children: [
-              const CircleAvatar(
+              CircleAvatar(
                 radius: 26,
-                backgroundColor: Color(0xFFE6EDF7),
-                child: Icon(
-                  Icons.person_rounded,
-                  color: Color(0xFF4B5563),
-                  size: 28,
+                backgroundColor: const Color(0xFFE6EDF7),
+                child: Text(
+                  _initials(_fullName),
+                  style: const TextStyle(
+                    color: Color(0xFF374151),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Sales Manager',
-                      style: TextStyle(
+                      _fullName,
+                      style: const TextStyle(
                         color: Color(0xFF111827),
                         fontWeight: FontWeight.w700,
                         fontSize: 18,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      'manager@redrose.com',
-                      style: TextStyle(
+                      _email,
+                      style: const TextStyle(
                         color: Color(0xFF6B7280),
                         fontWeight: FontWeight.w500,
                       ),
@@ -138,7 +179,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               _outlineActionButton(
                 icon: Icons.edit_outlined,
                 label: 'Edit Profile',
-                onTap: () => _toast('Profile editor opened'),
+                onTap: _editProfile,
               ),
             ],
           ),
@@ -148,11 +189,11 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           Wrap(
             spacing: 10,
             runSpacing: 10,
-            children: const [
-              _InfoChip(label: 'Role', value: 'Sales Manager'),
-              _InfoChip(label: 'Phone', value: '+974 5500 1122'),
-              _InfoChip(label: 'Region', value: 'Doha'),
-              _InfoChip(label: 'Department', value: 'Commercial'),
+            children: [
+              _InfoChip(label: 'Role', value: _role),
+              _InfoChip(label: 'Phone', value: _phone),
+              _InfoChip(label: 'Region', value: _region),
+              _InfoChip(label: 'Department', value: _department),
             ],
           ),
         ],
@@ -190,13 +231,13 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             icon: Iconsax.profile_2user,
             title: 'Manage Team Permissions',
             subtitle: 'Roles and module access controls',
-            onTap: () => _toast('Permission manager opened'),
+            onTap: _managePermissions,
           ),
           _actionTile(
             icon: Iconsax.notification,
             title: 'Notification Rules',
             subtitle: 'Control alerts for orders, targets, and stock',
-            onTap: () => _toast('Notification rules opened'),
+            onTap: _manageNotificationRules,
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -305,18 +346,18 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         _settingRow(
           icon: Iconsax.monitor,
           title: 'Active Sessions',
-          subtitle: 'Browser: Chrome on macOS • Last active now',
+          subtitle: _sessionSubtitle,
           trailing: _outlineActionButton(
             icon: Iconsax.close_circle,
-            label: isNarrow ? 'Revoke' : 'Revoke Other Devices',
-            onTap: () => _toast('Other sessions revoked'),
+            label: isNarrow ? 'Manage' : 'Manage Sessions',
+            onTap: _manageSessions,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildNotificationSection(bool isNarrow) {
+  Widget _buildNotificationSection() {
     return _sectionCard(
       title: 'Notifications',
       subtitle: 'Choose how you receive operational and sales alerts.',
@@ -352,7 +393,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     );
   }
 
-  Widget _buildPreferenceSection(bool isNarrow) {
+  Widget _buildPreferenceSection() {
     return _sectionCard(
       title: 'Preferences',
       subtitle: 'Configure regional and display preferences.',
@@ -361,7 +402,14 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           icon: Iconsax.money,
           title: 'Currency',
           subtitle: 'Default transaction currency',
-          trailing: const _Pill(text: 'QAR'),
+          trailing: PopupMenuButton<String>(
+            onSelected: (value) => setState(() => _currency = value),
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'QAR', child: Text('QAR')),
+              PopupMenuItem(value: 'USD', child: Text('USD')),
+            ],
+            child: _pillButton(_currency),
+          ),
         ),
         _settingRow(
           icon: Iconsax.language_square,
@@ -417,9 +465,11 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Sensitive account actions. Use carefully.',
-            style: TextStyle(
+          Text(
+            _deactivated
+                ? 'Account is currently marked as deactivated.'
+                : 'Sensitive account actions. Use carefully.',
+            style: const TextStyle(
               color: Color(0xFF9E4A53),
               fontWeight: FontWeight.w500,
             ),
@@ -439,9 +489,9 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                 ),
               ),
               OutlinedButton.icon(
-                onPressed: () => _toast('Account deactivation request started'),
-                icon: const Icon(Iconsax.user_remove),
-                label: const Text('Deactivate Account'),
+                onPressed: _toggleDeactivateAccount,
+                icon: Icon(_deactivated ? Iconsax.user_add : Iconsax.user_remove),
+                label: Text(_deactivated ? 'Reactivate Account' : 'Deactivate Account'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFFB4232A),
                   side: const BorderSide(color: Color(0xFFF1AAB1)),
@@ -589,31 +639,372 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     );
   }
 
-  void _confirmResetPassword() {
-    showDialog<void>(
+  String get _sessionSubtitle {
+    final otherCount = _sessions.where((e) => !e.isCurrent).length;
+    if (otherCount == 0) return 'Only current browser session is active';
+    return '$otherCount other session(s) active';
+  }
+
+  Future<void> _editProfile() async {
+    final fullNameController = TextEditingController(text: _fullName);
+    final emailController = TextEditingController(text: _email);
+    final roleController = TextEditingController(text: _role);
+    final phoneController = TextEditingController(text: _phone);
+    final regionController = TextEditingController(text: _region);
+    final departmentController = TextEditingController(text: _department);
+    final formKey = GlobalKey<FormState>();
+
+    final updated = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Reset Password'),
-          content: const Text(
-            'Send a password reset link to manager@redrose.com?',
+          title: const Text('Edit Profile'),
+          content: SizedBox(
+            width: 430,
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: fullNameController,
+                    decoration: const InputDecoration(labelText: 'Full Name'),
+                    validator: (value) =>
+                        (value ?? '').trim().isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: emailController,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                    validator: (value) =>
+                        (value ?? '').trim().isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: roleController,
+                    decoration: const InputDecoration(labelText: 'Role'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: phoneController,
+                    decoration: const InputDecoration(labelText: 'Phone'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: regionController,
+                    decoration: const InputDecoration(labelText: 'Region'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: departmentController,
+                    decoration: const InputDecoration(labelText: 'Department'),
+                  ),
+                ],
+              ),
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(context).pop(false),
               child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () {
-                Navigator.of(context).pop();
-                _toast('Password reset link sent');
+                if (!(formKey.currentState?.validate() ?? false)) return;
+                setState(() {
+                  _fullName = fullNameController.text.trim();
+                  _email = emailController.text.trim();
+                  _role = roleController.text.trim();
+                  _phone = phoneController.text.trim();
+                  _region = regionController.text.trim();
+                  _department = departmentController.text.trim();
+                });
+                Navigator.of(context).pop(true);
               },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (updated == true) _toast('Profile updated');
+  }
+
+  Future<void> _confirmResetPassword() async {
+    final shouldSend = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Reset Password'),
+          content: Text('Send a password reset link to $_email?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
               child: const Text('Send Link'),
             ),
           ],
         );
       },
     );
+    if (shouldSend == true) _toast('Password reset link sent');
+  }
+
+  Future<void> _managePermissions() async {
+    final localPermissions = Map<String, bool>.from(_permissions);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Team Permissions'),
+              content: SizedBox(
+                width: 380,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: localPermissions.keys.map((module) {
+                    return SwitchListTile(
+                      dense: true,
+                      title: Text(module),
+                      value: localPermissions[module] ?? false,
+                      onChanged: (value) {
+                        setDialogState(() => localPermissions[module] = value);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    setState(() {
+                      _permissions
+                        ..clear()
+                        ..addAll(localPermissions);
+                    });
+                    Navigator.of(context).pop(true);
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (saved == true) _toast('Permissions updated');
+  }
+
+  Future<void> _manageNotificationRules() async {
+    var failedMinutes = _failedOrderAlertMinutes;
+    var lowStock = _lowStockThreshold;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Notification Rules'),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text('Failed order alert after (minutes)'),
+                        ),
+                        SizedBox(
+                          width: 80,
+                          child: TextFormField(
+                            initialValue: failedMinutes.toString(),
+                            keyboardType: TextInputType.number,
+                            onChanged: (value) {
+                              final parsed = int.tryParse(value);
+                              if (parsed != null) failedMinutes = parsed;
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text('Low stock threshold (units)'),
+                        ),
+                        SizedBox(
+                          width: 80,
+                          child: TextFormField(
+                            initialValue: lowStock.toString(),
+                            keyboardType: TextInputType.number,
+                            onChanged: (value) {
+                              final parsed = int.tryParse(value);
+                              if (parsed != null) lowStock = parsed;
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    SwitchListTile(
+                      dense: true,
+                      title: const Text('Email Notifications'),
+                      value: _emailNotifications,
+                      onChanged: (value) {
+                        setDialogState(() => _emailNotifications = value);
+                      },
+                    ),
+                    SwitchListTile(
+                      dense: true,
+                      title: const Text('SMS Notifications'),
+                      value: _smsNotifications,
+                      onChanged: (value) {
+                        setDialogState(() => _smsNotifications = value);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    setState(() {
+                      _failedOrderAlertMinutes = failedMinutes;
+                      _lowStockThreshold = lowStock;
+                    });
+                    Navigator.of(context).pop(true);
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (saved == true) _toast('Notification rules saved');
+  }
+
+  Future<void> _manageSessions() async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Active Sessions'),
+              content: SizedBox(
+                width: 440,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: _sessions.map((session) {
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        session.isCurrent ? Icons.laptop_mac : Icons.phone_iphone,
+                      ),
+                      title: Text(session.device),
+                      subtitle: Text('${session.location} • ${session.lastActive}'),
+                      trailing: session.isCurrent
+                          ? const Text('Current')
+                          : TextButton(
+                              onPressed: () {
+                                setDialogState(() {
+                                  _sessions.removeWhere((e) => e.id == session.id);
+                                });
+                              },
+                              child: const Text('Revoke'),
+                            ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Close'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    setState(() {});
+                    Navigator.of(context).pop(true);
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (saved == true) _toast('Sessions updated');
+  }
+
+  Future<void> _toggleDeactivateAccount() async {
+    if (_deactivated) {
+      setState(() => _deactivated = false);
+      _toast('Account reactivated');
+      return;
+    }
+
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Deactivate Account'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Type DEACTIVATE to confirm.'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(hintText: 'DEACTIVATE'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop(
+                  controller.text.trim().toUpperCase() == 'DEACTIVATE',
+                );
+              },
+              child: const Text('Confirm'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      setState(() => _deactivated = true);
+      _toast('Account deactivated');
+    } else if (confirmed == false) {
+      _toast('Deactivation cancelled');
+    }
   }
 
   void _confirmLogout() {
@@ -633,7 +1024,12 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             FilledButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                _toast('Logged out');
+                final onLogout = widget.onLogout;
+                if (onLogout != null) {
+                  onLogout();
+                } else {
+                  _toast('Logged out');
+                }
               },
               child: const Text('Logout'),
             ),
@@ -643,10 +1039,16 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     );
   }
 
+  String _initials(String name) {
+    final parts = name.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    if (parts.isEmpty) return 'U';
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
+        .toUpperCase();
+  }
+
   void _toast(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -690,27 +1092,18 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
-class _Pill extends StatelessWidget {
-  final String text;
+class _SessionInfo {
+  final String id;
+  final String device;
+  final String location;
+  final bool isCurrent;
+  final String lastActive;
 
-  const _Pill({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE1E7F0)),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Color(0xFF374151),
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
+  const _SessionInfo({
+    required this.id,
+    required this.device,
+    required this.location,
+    required this.isCurrent,
+    required this.lastActive,
+  });
 }

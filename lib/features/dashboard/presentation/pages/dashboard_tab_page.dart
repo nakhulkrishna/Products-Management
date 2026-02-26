@@ -1,6 +1,10 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
+import 'package:products_catelogs/core/constants/firestore_collections.dart';
 
 enum _SalesStatus { active, inactive }
 
@@ -26,6 +30,28 @@ class _Salesman {
     required this.dealsClosed,
     required this.totalSales,
   });
+
+  _Salesman copyWith({
+    String? id,
+    String? name,
+    String? region,
+    String? email,
+    _SalesStatus? status,
+    DateTime? lastSaleDate,
+    int? dealsClosed,
+    double? totalSales,
+  }) {
+    return _Salesman(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      region: region ?? this.region,
+      email: email ?? this.email,
+      status: status ?? this.status,
+      lastSaleDate: lastSaleDate ?? this.lastSaleDate,
+      dealsClosed: dealsClosed ?? this.dealsClosed,
+      totalSales: totalSales ?? this.totalSales,
+    );
+  }
 }
 
 class _TrendingProduct {
@@ -42,6 +68,13 @@ class _TrendingProduct {
   });
 }
 
+class _TrendAggregate {
+  int units = 0;
+  double revenue = 0;
+  double growthTotal = 0;
+  int growthCount = 0;
+}
+
 class DashboardTabPage extends StatefulWidget {
   const DashboardTabPage({super.key});
 
@@ -50,7 +83,10 @@ class DashboardTabPage extends StatefulWidget {
 }
 
 class _DashboardTabPageState extends State<DashboardTabPage> {
+  static const double _minTableWidth = 1324;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final _searchController = TextEditingController();
+  final _tableScrollController = ScrollController();
   final _currency = NumberFormat.currency(
     locale: 'en_QA',
     symbol: 'QAR ',
@@ -61,8 +97,15 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
   String _query = '';
   _StatusFilter _statusFilter = _StatusFilter.all;
   final Set<String> _selectedIds = <String>{};
+  bool _loadingSalesmen = true;
+  bool _loadingOrders = true;
+  String? _salesmenError;
+  String? _ordersError;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _salesmenSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ordersSub;
+  final List<Map<String, dynamic>> _orders = [];
 
-  static final _salesmen = <_Salesman>[
+  static final _seedSalesmen = <_Salesman>[
     _Salesman(
       id: 'SM-001',
       name: 'Ahmed Nasser',
@@ -124,38 +167,101 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
       totalSales: 16900,
     ),
   ];
+  late final List<_Salesman> _salesmen;
 
-  static const _trendingProducts = <_TrendingProduct>[
-    _TrendingProduct(
-      name: 'Ceramic Tiles - Premium',
-      unitsSold: 420,
-      revenue: 128000,
-      growthPercent: 12.4,
-    ),
-    _TrendingProduct(
-      name: 'Steel Frames - A12',
-      unitsSold: 270,
-      revenue: 96400,
-      growthPercent: 9.8,
-    ),
-    _TrendingProduct(
-      name: 'Plaster Mix - Pro',
-      unitsSold: 510,
-      revenue: 88750,
-      growthPercent: 6.2,
-    ),
-    _TrendingProduct(
-      name: 'Electrical Set - E45',
-      unitsSold: 190,
-      revenue: 74100,
-      growthPercent: 4.1,
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    if (_seedSalesmen.isEmpty) {
+      // Local seed list is retained only for optional manual migration.
+    }
+    _salesmen = [];
+    _subscribeSalesmen();
+    _subscribeOrders();
+  }
 
   @override
   void dispose() {
+    _salesmenSub?.cancel();
+    _ordersSub?.cancel();
     _searchController.dispose();
+    _tableScrollController.dispose();
     super.dispose();
+  }
+
+  void _subscribeSalesmen() {
+    _salesmenSub?.cancel();
+    setState(() {
+      _loadingSalesmen = true;
+      _salesmenError = null;
+    });
+    _salesmenSub = _firestore
+        .collection(FirestoreCollections.staffSalesmen)
+        .snapshots()
+        .listen(
+          (snapshot) {
+            final items = snapshot.docs
+                .map(_salesmanFromDoc)
+                .whereType<_Salesman>()
+                .toList();
+            items.sort(
+              (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+            );
+            if (!mounted) return;
+            setState(() {
+              _salesmen
+                ..clear()
+                ..addAll(items);
+              _selectedIds.removeWhere(
+                (id) => !_salesmen.any((salesman) => salesman.id == id),
+              );
+              _loadingSalesmen = false;
+              _salesmenError = null;
+            });
+          },
+          onError: (error) {
+            if (!mounted) return;
+            setState(() {
+              _loadingSalesmen = false;
+              _salesmenError = '$error';
+            });
+          },
+        );
+  }
+
+  void _subscribeOrders() {
+    _ordersSub?.cancel();
+    setState(() {
+      _loadingOrders = true;
+      _ordersError = null;
+    });
+    _ordersSub = _firestore
+        .collection(FirestoreCollections.orders)
+        .snapshots()
+        .listen(
+          (snapshot) {
+            final items = snapshot.docs.map((doc) {
+              final map = Map<String, dynamic>.from(doc.data());
+              map['_docId'] = doc.id;
+              return map;
+            }).toList();
+            if (!mounted) return;
+            setState(() {
+              _orders
+                ..clear()
+                ..addAll(items);
+              _loadingOrders = false;
+              _ordersError = null;
+            });
+          },
+          onError: (error) {
+            if (!mounted) return;
+            setState(() {
+              _loadingOrders = false;
+              _ordersError = '$error';
+            });
+          },
+        );
   }
 
   List<_Salesman> get _filteredSalesmen {
@@ -181,20 +287,20 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredSalesmen;
+    final trendingProducts = _trendingProductsFromOrders;
     final selectedCount = filtered
         .where((salesman) => _selectedIds.contains(salesman.id))
         .length;
     final isAllSelected =
         filtered.isNotEmpty && selectedCount == filtered.length;
-    final totalSales = filtered.fold<double>(
+    final totalSales = _orders.fold<double>(
       0,
-      (sum, salesman) => sum + salesman.totalSales,
+      (runningTotal, order) => runningTotal + _doubleOr(order['amountQar']),
     );
-    final totalDeals = filtered.fold<int>(
-      0,
-      (sum, salesman) => sum + salesman.dealsClosed,
-    );
-    final activeSalesmen = filtered
+    final totalDeals = _orders.where((order) {
+      return _orderStatusString(order) == 'delivered';
+    }).length;
+    final activeSalesmen = _salesmen
         .where((salesman) => salesman.status == _SalesStatus.active)
         .length;
     final avgDealValue = totalDeals == 0 ? 0.0 : totalSales / totalDeals;
@@ -208,13 +314,58 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
       builder: (context, constraints) {
         final isCompact = constraints.maxWidth < 930;
         final isNarrow = constraints.maxWidth < 700;
-        final tableWidth = constraints.maxWidth < 1220
-            ? 1220.0
+        final tableWidth = constraints.maxWidth < _minTableWidth
+            ? _minTableWidth
             : constraints.maxWidth;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _buildHeader(isCompact),
+            const SizedBox(height: 12),
+            if (_loadingSalesmen || _loadingOrders)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: LinearProgressIndicator(minHeight: 3),
+              ),
+            if (_salesmenError != null || _ordersError != null)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF3F2),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFF4C7C4)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      color: Color(0xFFB42318),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _salesmenError != null
+                            ? 'Salesmen load failed: $_salesmenError'
+                            : 'Orders load failed: $_ordersError',
+                        style: const TextStyle(
+                          color: Color(0xFFB42318),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        _subscribeSalesmen();
+                        _subscribeOrders();
+                      },
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
             if (topPerformer != null) ...[
               _buildInsightBanner(
                 topPerformer: topPerformer,
@@ -230,7 +381,11 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
               avgDealValue: avgDealValue,
             ),
             const SizedBox(height: 12),
-            _buildTrendingProducts(isCompact, isNarrow),
+            _buildTrendingProducts(
+              isCompact: isCompact,
+              isNarrow: isNarrow,
+              products: trendingProducts,
+            ),
             const SizedBox(height: 12),
             isCompact
                 ? Column(
@@ -299,9 +454,14 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
                   child: const Text('Select All'),
                 ),
                 TextButton.icon(
-                  onPressed: selectedCount == 0 ? null : () {},
+                  onPressed: selectedCount == 0 ? null : _deactivateSelected,
                   icon: const Icon(Iconsax.user_minus, size: 18),
                   label: const Text('Deactivate'),
+                ),
+                TextButton.icon(
+                  onPressed: selectedCount == 0 ? null : _deleteSelected,
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                  label: const Text('Delete'),
                 ),
               ],
             ),
@@ -313,7 +473,9 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: const Color(0xFFDDE2EA)),
                 ),
-                child: filtered.isEmpty
+                child: _loadingSalesmen
+                    ? const Center(child: CircularProgressIndicator())
+                    : filtered.isEmpty
                     ? const Center(
                         child: Text(
                           'No salesmen found.',
@@ -332,6 +494,127 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
         );
       },
     );
+  }
+
+  List<_TrendingProduct> get _trendingProductsFromOrders {
+    final aggregates = <String, _TrendAggregate>{};
+
+    for (final order in _orders) {
+      final amount = _doubleOr(order['amountQar']);
+      final rawItems = order['items'];
+      if (rawItems is List && rawItems.isNotEmpty) {
+        for (final item in rawItems) {
+          if (item is! Map) continue;
+          final map = Map<String, dynamic>.from(item);
+          final name = _stringOr(
+            map['productName'] ?? map['name'] ?? map['title'],
+            fallback: 'Unnamed Product',
+          );
+          final qty = _intOr(map['qty'] ?? map['quantity'] ?? map['count']);
+          final lineRevenue = _doubleOr(
+            map['totalQar'] ?? map['lineTotal'] ?? map['amount'] ?? map['revenue'],
+          );
+          final growth = _doubleOr(map['growthPercent']);
+          final entry = aggregates.putIfAbsent(name, () => _TrendAggregate());
+          entry.units += qty <= 0 ? 1 : qty;
+          entry.revenue += lineRevenue > 0 ? lineRevenue : amount;
+          if (growth != 0) {
+            entry.growthTotal += growth;
+            entry.growthCount += 1;
+          }
+        }
+      } else {
+        final name = _stringOr(order['productName'], fallback: 'Unassigned Product');
+        final units = _intOr(order['itemsCount']);
+        final entry = aggregates.putIfAbsent(name, () => _TrendAggregate());
+        entry.units += units <= 0 ? 1 : units;
+        entry.revenue += amount;
+      }
+    }
+
+    final list = aggregates.entries.map((entry) {
+      final aggregate = entry.value;
+      final growth = aggregate.growthCount == 0
+          ? 0.0
+          : aggregate.growthTotal / aggregate.growthCount;
+      return _TrendingProduct(
+        name: entry.key,
+        unitsSold: aggregate.units,
+        revenue: aggregate.revenue,
+        growthPercent: growth,
+      );
+    }).toList();
+
+    list.sort((a, b) => b.revenue.compareTo(a.revenue));
+    return list.take(4).toList();
+  }
+
+  _Salesman? _salesmanFromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    if (data == null) return null;
+    final id = _stringOr(data['id'], fallback: doc.id).trim();
+    if (id.isEmpty) return null;
+    return _Salesman(
+      id: id,
+      name: _stringOr(data['name'], fallback: 'Unknown'),
+      region: _stringOr(data['region'], fallback: ''),
+      email: _stringOr(data['email'], fallback: ''),
+      status: _salesStatusFromString(_stringOr(data['status'], fallback: 'active')),
+      lastSaleDate: _dateOrNow(data['lastSaleDate']),
+      dealsClosed: _intOr(data['dealsClosed']),
+      totalSales: _doubleOr(data['totalSales']),
+    );
+  }
+
+  _SalesStatus _salesStatusFromString(String raw) {
+    switch (raw.toLowerCase()) {
+      case 'inactive':
+      case 'on_leave':
+      case 'onleave':
+        return _SalesStatus.inactive;
+      default:
+        return _SalesStatus.active;
+    }
+  }
+
+  String _salesStatusToString(_SalesStatus status) {
+    switch (status) {
+      case _SalesStatus.active:
+        return 'active';
+      case _SalesStatus.inactive:
+        return 'inactive';
+    }
+  }
+
+  String _orderStatusString(Map<String, dynamic> order) {
+    return _stringOr(order['orderStatus'], fallback: 'processing').toLowerCase();
+  }
+
+  String _stringOr(dynamic value, {String fallback = ''}) {
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+    return fallback;
+  }
+
+  int _intOr(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse('$value') ?? 0;
+  }
+
+  double _doubleOr(dynamic value) {
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+    return double.tryParse('$value') ?? 0;
+  }
+
+  DateTime _dateOrNow(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) return parsed;
+    }
+    return DateTime.now();
   }
 
   Widget _buildInsightBanner({
@@ -465,7 +748,11 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
     );
   }
 
-  Widget _buildTrendingProducts(bool isCompact, bool isNarrow) {
+  Widget _buildTrendingProducts({
+    required bool isCompact,
+    required bool isNarrow,
+    required List<_TrendingProduct> products,
+  }) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
@@ -486,30 +773,42 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
             ),
           ),
           const SizedBox(height: 8),
+          if (products.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'No trending products available from backend orders.',
+                style: TextStyle(
+                  color: Color(0xFF6B7280),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          if (products.isNotEmpty)
           SizedBox(
             height: isCompact ? (isNarrow ? 280 : 126) : 88,
             child: isNarrow
                 ? Column(
                     children: [
-                      for (int i = 0; i < _trendingProducts.length; i++) ...[
+                      for (int i = 0; i < products.length; i++) ...[
                         Expanded(
                           child: _buildTrendingCard(
-                            product: _trendingProducts[i],
+                            product: products[i],
                             width: double.infinity,
                           ),
                         ),
-                        if (i != _trendingProducts.length - 1)
+                        if (i != products.length - 1)
                           const SizedBox(height: 8),
                       ],
                     ],
                   )
                 : ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    itemCount: _trendingProducts.length,
+                    itemCount: products.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 10),
                     itemBuilder: (context, index) {
                       return _buildTrendingCard(
-                        product: _trendingProducts[index],
+                        product: products[index],
                         width: isCompact ? 230 : 260,
                       );
                     },
@@ -601,6 +900,84 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
     );
   }
 
+  Widget _buildHeader(bool compact) {
+    return Row(
+      children: [
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Dashboard',
+                style: TextStyle(
+                  fontSize: 30,
+                  height: 1.1,
+                  color: Color(0xFF111827),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Track sales performance and manage salesmen activity.',
+                style: TextStyle(
+                  color: Color(0xFF8A94A6),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (!compact)
+          _headerActionButton(
+            onTap: _addSalesman,
+            icon: Icons.add_rounded,
+            label: 'Add Salesman',
+            highlighted: true,
+          ),
+      ],
+    );
+  }
+
+  Widget _headerActionButton({
+    required VoidCallback onTap,
+    required IconData icon,
+    required String label,
+    bool highlighted = false,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.white,
+          border: Border.all(
+            color: highlighted
+                ? const Color(0xFF111827)
+                : const Color(0xFFDDE2EA),
+            width: highlighted ? 1.4 : 1.0,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 19, color: const Color(0xFF111827)),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF111827),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildFilterButton() {
     return PopupMenuButton<_StatusFilter>(
       onSelected: (value) {
@@ -647,7 +1024,9 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
         Expanded(
           child: Scrollbar(
             thumbVisibility: true,
+            controller: _tableScrollController,
             child: ListView.separated(
+              controller: _tableScrollController,
               itemCount: filtered.length,
               separatorBuilder: (_, __) =>
                   const Divider(height: 1, color: Color(0xFFE8EBF0)),
@@ -764,6 +1143,30 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
               _infoRow('Last Sale', _dateFormat.format(salesman.lastSaleDate)),
               _infoRow('Deals Closed', salesman.dealsClosed.toString()),
               _infoRow('Total Sales', _currency.format(salesman.totalSales)),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _editSalesman(salesman),
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: const Text('Edit'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _toggleSalesmanStatus(salesman),
+                    icon: const Icon(Iconsax.user_minus, size: 16),
+                    label: Text(
+                      isActive ? 'Deactivate' : 'Activate',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _deleteSalesman(salesman),
+                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                    label: const Text('Delete'),
+                  ),
+                ],
+              ),
             ],
           ),
         );
@@ -934,14 +1337,445 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
             ),
             _RowCell(width: 140, text: salesman.dealsClosed.toString()),
             _RowCell(width: 144, text: _currency.format(salesman.totalSales)),
-            const SizedBox(
+            SizedBox(
               width: 40,
-              child: Icon(Icons.more_horiz_rounded, color: Color(0xFF7A8190)),
+              child: PopupMenuButton<String>(
+                icon: const Icon(
+                  Icons.more_horiz_rounded,
+                  color: Color(0xFF7A8190),
+                ),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'edit':
+                      _editSalesman(salesman);
+                      break;
+                    case 'toggle':
+                      _toggleSalesmanStatus(salesman);
+                      break;
+                    case 'delete':
+                      _deleteSalesman(salesman);
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  PopupMenuItem(
+                    value: 'toggle',
+                    child: Text(isActive ? 'Deactivate' : 'Activate'),
+                  ),
+                  const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                ],
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _addSalesman() async {
+    final created = await _showSalesmanEditorSheet();
+    if (created == null) return;
+    try {
+      await _firestore
+          .collection(FirestoreCollections.staffSalesmen)
+          .doc(created.id)
+          .set({
+            'id': created.id,
+            'name': created.name,
+            'nameLower': created.name.toLowerCase(),
+            'region': created.region,
+            'email': created.email,
+            'status': _salesStatusToString(created.status),
+            'lastSaleDate': Timestamp.fromDate(created.lastSaleDate),
+            'dealsClosed': created.dealsClosed,
+            'totalSales': created.totalSales,
+            'updatedAt': FieldValue.serverTimestamp(),
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+      _toast('Salesman added.');
+    } catch (error) {
+      _toast('Failed to add salesman: $error');
+    }
+  }
+
+  Future<void> _editSalesman(_Salesman salesman) async {
+    final updated = await _showSalesmanEditorSheet(existing: salesman);
+    if (updated == null) return;
+    try {
+      await _firestore
+          .collection(FirestoreCollections.staffSalesmen)
+          .doc(salesman.id)
+          .set({
+            'name': updated.name,
+            'nameLower': updated.name.toLowerCase(),
+            'region': updated.region,
+            'email': updated.email,
+            'status': _salesStatusToString(updated.status),
+            'lastSaleDate': Timestamp.fromDate(updated.lastSaleDate),
+            'dealsClosed': updated.dealsClosed,
+            'totalSales': updated.totalSales,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      _toast('Salesman updated.');
+    } catch (error) {
+      _toast('Failed to update salesman: $error');
+    }
+  }
+
+  Future<void> _toggleSalesmanStatus(_Salesman salesman) async {
+    final isActive = salesman.status == _SalesStatus.active;
+    final confirmed = await _showRightSheet<bool>(
+      title: isActive ? 'Deactivate Salesman' : 'Activate Salesman',
+      icon: isActive ? Iconsax.user_minus : Iconsax.user_add,
+      body: Text(
+        isActive
+            ? 'Deactivate ${salesman.name}?'
+            : 'Activate ${salesman.name}?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(isActive ? 'Deactivate' : 'Activate'),
+        ),
+      ],
+    );
+    if (confirmed != true) return;
+    try {
+      await _firestore
+          .collection(FirestoreCollections.staffSalesmen)
+          .doc(salesman.id)
+          .set({
+            'status': _salesStatusToString(
+              isActive ? _SalesStatus.inactive : _SalesStatus.active,
+            ),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      _toast(isActive ? 'Salesman deactivated.' : 'Salesman activated.');
+    } catch (error) {
+      _toast('Failed to update status: $error');
+    }
+  }
+
+  Future<void> _deleteSalesman(_Salesman salesman) async {
+    final confirmed = await _showRightSheet<bool>(
+      title: 'Delete Salesman',
+      icon: Icons.delete_outline_rounded,
+      iconColor: const Color(0xFFE65A5A),
+      body: Text('Delete ${salesman.name} from dashboard list?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65A5A)),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Delete'),
+        ),
+      ],
+    );
+    if (confirmed != true) return;
+    try {
+      await _firestore
+          .collection(FirestoreCollections.staffSalesmen)
+          .doc(salesman.id)
+          .delete();
+      _selectedIds.remove(salesman.id);
+      _toast('Salesman deleted.');
+    } catch (error) {
+      _toast('Failed to delete salesman: $error');
+    }
+  }
+
+  Future<void> _deactivateSelected() async {
+    final ids = Set<String>.from(_selectedIds);
+    if (ids.isEmpty) return;
+    final confirmed = await _showRightSheet<bool>(
+      title: 'Deactivate Selected',
+      icon: Iconsax.user_minus,
+      body: Text('Deactivate ${ids.length} selected salesman(s)?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Deactivate'),
+        ),
+      ],
+    );
+    if (confirmed != true) return;
+    try {
+      final batch = _firestore.batch();
+      for (final id in ids) {
+        batch.set(
+          _firestore.collection(FirestoreCollections.staffSalesmen).doc(id),
+          {
+            'status': _salesStatusToString(_SalesStatus.inactive),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+      await batch.commit();
+      _toast('Selected salesmen deactivated.');
+    } catch (error) {
+      _toast('Failed to deactivate selected: $error');
+    }
+  }
+
+  Future<void> _deleteSelected() async {
+    final ids = Set<String>.from(_selectedIds);
+    if (ids.isEmpty) return;
+    final confirmed = await _showRightSheet<bool>(
+      title: 'Delete Selected',
+      icon: Icons.delete_sweep_outlined,
+      iconColor: const Color(0xFFE65A5A),
+      body: Text('Delete ${ids.length} selected salesman(s)?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65A5A)),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Delete'),
+        ),
+      ],
+    );
+    if (confirmed != true) return;
+    try {
+      final batch = _firestore.batch();
+      for (final id in ids) {
+        batch.delete(_firestore.collection(FirestoreCollections.staffSalesmen).doc(id));
+      }
+      await batch.commit();
+      _selectedIds.clear();
+      _toast('Selected salesmen deleted.');
+    } catch (error) {
+      _toast('Failed to delete selected: $error');
+    }
+  }
+
+  Future<_Salesman?> _showSalesmanEditorSheet({_Salesman? existing}) async {
+    final nameController = TextEditingController(text: existing?.name ?? '');
+    final regionController = TextEditingController(text: existing?.region ?? '');
+    final emailController = TextEditingController(text: existing?.email ?? '');
+    final dealsController = TextEditingController(
+      text: (existing?.dealsClosed ?? 0).toString(),
+    );
+    final salesController = TextEditingController(
+      text: (existing?.totalSales ?? 0).toStringAsFixed(0),
+    );
+    _SalesStatus status = existing?.status ?? _SalesStatus.active;
+    final formKey = GlobalKey<FormState>();
+
+    return _showRightSheet<_Salesman>(
+      title: existing == null ? 'Add Salesman' : 'Edit Salesman',
+      icon: existing == null ? Icons.person_add_alt_1 : Icons.edit_outlined,
+      body: StatefulBuilder(
+        builder: (context, setSheetState) => Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Name'),
+                validator: (value) =>
+                    (value ?? '').trim().isEmpty ? 'Required' : null,
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: regionController,
+                decoration: const InputDecoration(labelText: 'Region'),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: emailController,
+                decoration: const InputDecoration(labelText: 'Email'),
+                validator: (value) {
+                  final email = (value ?? '').trim();
+                  if (email.isEmpty) return 'Required';
+                  if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+                    return 'Invalid email';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: dealsController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Deals Closed'),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: salesController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Total Sales (QAR)'),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<_SalesStatus>(
+                initialValue: status,
+                decoration: const InputDecoration(labelText: 'Status'),
+                items: const [
+                  DropdownMenuItem(value: _SalesStatus.active, child: Text('Active')),
+                  DropdownMenuItem(
+                    value: _SalesStatus.inactive,
+                    child: Text('Inactive'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  setSheetState(() => status = value);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          onPressed: () {
+            if (!(formKey.currentState?.validate() ?? false)) return;
+            final id = existing?.id ?? _nextSalesmanId();
+            Navigator.of(context).pop(
+              _Salesman(
+                id: id,
+                name: nameController.text.trim(),
+                region: regionController.text.trim(),
+                email: emailController.text.trim(),
+                status: status,
+                lastSaleDate: existing?.lastSaleDate ?? DateTime.now(),
+                dealsClosed: int.tryParse(dealsController.text.trim()) ?? 0,
+                totalSales: double.tryParse(salesController.text.trim()) ?? 0,
+              ),
+            );
+          },
+          icon: Icon(
+            existing == null ? Icons.person_add_alt_1 : Icons.check_rounded,
+            size: 16,
+          ),
+          label: Text(existing == null ? 'Add' : 'Save'),
+        ),
+      ],
+    );
+  }
+
+  String _nextSalesmanId() {
+    int maxId = 0;
+    for (final salesman in _salesmen) {
+      final match = RegExp(r'^SM-(\d+)$').firstMatch(salesman.id);
+      if (match == null) continue;
+      final value = int.tryParse(match.group(1) ?? '');
+      if (value != null && value > maxId) {
+        maxId = value;
+      }
+    }
+    final next = maxId + 1;
+    return 'SM-${next.toString().padLeft(3, '0')}';
+  }
+
+  Future<T?> _showRightSheet<T>({
+    required String title,
+    required IconData icon,
+    required Widget body,
+    required List<Widget> actions,
+    Color iconColor = const Color(0xFF111827),
+  }) {
+    return showGeneralDialog<T>(
+      context: context,
+      barrierLabel: title,
+      barrierDismissible: true,
+      barrierColor: const Color(0x99000000),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.white,
+            borderRadius: const BorderRadius.horizontal(left: Radius.circular(18)),
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width > 620
+                  ? 520
+                  : MediaQuery.of(context).size.width * 0.92,
+              height: double.infinity,
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 10, 12),
+                      child: Row(
+                        children: [
+                          Icon(icon, size: 20, color: iconColor),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF111827),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1, color: Color(0xFFE5E8EE)),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                        child: body,
+                      ),
+                    ),
+                    const Divider(height: 1, color: Color(0xFFE5E8EE)),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: actions,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved =
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _initialsOf(String name) {
