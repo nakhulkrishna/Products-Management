@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import 'package:products_catelogs/core/constants/firestore_collections.dart';
+import 'package:products_catelogs/core/utils/external_url.dart';
 
 enum _OrderStatus { delivered, processing, cancelled }
 
@@ -49,6 +51,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
   static const int _rowsPerPage = 13;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   final TextEditingController _searchController = TextEditingController();
   final NumberFormat _currency = NumberFormat.currency(
     locale: 'en_QA',
@@ -64,6 +67,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
   String? _loadError;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ordersSub;
   final Set<String> _selectedIds = <String>{};
+  String? _whatsAppOrderNumber;
 
   static final List<_Order> _orders = [
     _Order(
@@ -215,6 +219,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
   void initState() {
     super.initState();
     _orders.clear();
+    _loadWhatsAppOrderNumber();
     _subscribeOrders();
   }
 
@@ -265,6 +270,22 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
             });
           },
         );
+  }
+
+  Future<void> _loadWhatsAppOrderNumber() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    try {
+      final doc = await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(user.uid)
+          .get();
+      if (!mounted) return;
+      final number = doc.data()?['whatsappOrderNumber'];
+      if (number is String && number.trim().isNotEmpty) {
+        setState(() => _whatsAppOrderNumber = number.trim());
+      }
+    } catch (_) {}
   }
 
   List<_Order> get _filteredOrders {
@@ -654,7 +675,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
             _HeaderCell(width: 128, text: 'Amount (QAR)'),
             _HeaderCell(width: 138, text: 'Payment'),
             _HeaderCell(width: 140, text: 'Order Status'),
-            _HeaderCell(width: 90, text: 'Action'),
+            _HeaderCell(width: 170, text: 'Action'),
           ],
         ),
       ),
@@ -758,9 +779,18 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
               ),
             ),
             SizedBox(
-              width: 90,
+              width: 170,
               child: Row(
                 children: [
+                  IconButton(
+                    onPressed: () => _sendBillToWhatsApp(order),
+                    icon: const Icon(
+                      Iconsax.message,
+                      size: 18,
+                      color: Color(0xFF2EA8A5),
+                    ),
+                    tooltip: 'Send bill',
+                  ),
                   IconButton(
                     onPressed: () {},
                     icon: const Icon(
@@ -908,6 +938,19 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
               const SizedBox(height: 10),
               Row(
                 children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _sendBillToWhatsApp(order),
+                    icon: const Icon(
+                      Iconsax.message,
+                      size: 16,
+                      color: Color(0xFF2EA8A5),
+                    ),
+                    label: const Text(
+                      'Send Bill',
+                      style: TextStyle(color: Color(0xFF2EA8A5)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: () {},
                     icon: const Icon(Icons.edit_outlined, size: 16),
@@ -1075,7 +1118,10 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
     return _Order(
       docId: doc.id,
       id: id,
-      customerName: _stringOr(data['customerName'], fallback: 'Unknown Customer'),
+      customerName: _stringOr(
+        data['customerName'],
+        fallback: 'Unknown Customer',
+      ),
       salesmanName: _stringOr(data['salesmanName'], fallback: 'Unknown'),
       orderDate: _dateOrNow(data['orderDate']),
       itemsCount: _intOr(data['itemsCount']),
@@ -1150,7 +1196,9 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
       final targets = _orders.where((order) => ids.contains(order.id));
       for (final order in targets) {
         final docId = order.docId.isEmpty ? order.id : order.docId;
-        batch.delete(_firestore.collection(FirestoreCollections.orders).doc(docId));
+        batch.delete(
+          _firestore.collection(FirestoreCollections.orders).doc(docId),
+        );
       }
       await batch.commit();
       if (!mounted) return;
@@ -1160,6 +1208,53 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
       if (!mounted) return;
       _toast('Failed to delete selected orders: $error');
     }
+  }
+
+  Future<void> _sendBillToWhatsApp(_Order order) async {
+    String? targetNumber = _whatsAppOrderNumber;
+    if (targetNumber == null || targetNumber.trim().isEmpty) {
+      await _loadWhatsAppOrderNumber();
+      targetNumber = _whatsAppOrderNumber;
+    }
+    if (targetNumber == null || targetNumber.trim().isEmpty) {
+      _toast('Set Order WhatsApp Number in Settings first.');
+      return;
+    }
+
+    final normalized = _normalizePhone(targetNumber);
+    if (normalized.isEmpty) {
+      _toast('Invalid WhatsApp number in Settings.');
+      return;
+    }
+
+    final text =
+        'Order Bill\n'
+        'Order ID: ${order.id}\n'
+        'Customer: ${order.customerName}\n'
+        'Salesman: ${order.salesmanName}\n'
+        'Date: ${_dateFormat.format(order.orderDate)}\n'
+        'Items: ${order.itemsCount}\n'
+        'Amount: ${_currency.format(order.amountQar)}\n'
+        'Payment: ${_paymentStyle(order.paymentStatus).$4}\n'
+        'Status: ${_orderStyle(order.orderStatus).$4}';
+    final url = Uri.parse(
+      'https://wa.me/$normalized?text=${Uri.encodeComponent(text)}',
+    ).toString();
+
+    final opened = await openExternalUrl(url);
+    if (!opened) {
+      _toast('WhatsApp open is only supported on web in this build.');
+      return;
+    }
+    _toast('Opening WhatsApp for ${order.id}...');
+  }
+
+  String _normalizePhone(String value) {
+    final raw = value.trim();
+    if (raw.isEmpty) return '';
+    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return '';
+    return digits;
   }
 
   String _stringOr(dynamic value, {String fallback = ''}) {
@@ -1213,7 +1308,9 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _initialsOf(String name) {

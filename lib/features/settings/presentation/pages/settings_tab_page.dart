@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:excel/excel.dart' as xls;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
+import 'package:products_catelogs/core/constants/firestore_collections.dart';
+import 'package:products_catelogs/core/utils/file_download.dart';
 
 class SettingsTabPage extends StatefulWidget {
   final VoidCallback? onLogout;
@@ -11,6 +17,14 @@ class SettingsTabPage extends StatefulWidget {
 }
 
 class _SettingsTabPageState extends State<SettingsTabPage> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final DateFormat _reportDateFormat = DateFormat('yyyy-MM-dd HH:mm');
+
+  bool _isSavingProfile = false;
+  bool _isExportingReport = false;
+  String _whatsAppOrderNumber = '+97455001122';
+
   bool _twoFactorEnabled = true;
   bool _emailNotifications = true;
   bool _smsNotifications = false;
@@ -56,6 +70,35 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    final doc = await _firestore
+        .collection(FirestoreCollections.users)
+        .doc(user.uid)
+        .get();
+    final data = doc.data();
+    if (data == null || !mounted) return;
+    setState(() {
+      _fullName = _valueOr(data['fullName'], fallback: _fullName);
+      _email = _valueOr(data['email'], fallback: _email);
+      _role = _valueOr(data['role'], fallback: _role);
+      _phone = _valueOr(data['phone'], fallback: _phone);
+      _region = _valueOr(data['region'], fallback: _region);
+      _department = _valueOr(data['department'], fallback: _department);
+      _whatsAppOrderNumber = _valueOr(
+        data['whatsappOrderNumber'],
+        fallback: _whatsAppOrderNumber,
+      );
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -76,16 +119,18 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                         _buildQuickActionsCard(),
                       ],
                     )
-                  : Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(flex: 3, child: _buildProfileCard()),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: isCompact ? 3 : 2,
-                          child: _buildQuickActionsCard(),
-                        ),
-                      ],
+                  : IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(flex: 3, child: _buildProfileCard()),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: isCompact ? 3 : 2,
+                            child: _buildQuickActionsCard(),
+                          ),
+                        ],
+                      ),
                     ),
               const SizedBox(height: 12),
               _buildSecuritySection(isNarrow),
@@ -93,6 +138,8 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               _buildNotificationSection(),
               const SizedBox(height: 12),
               _buildPreferenceSection(),
+              const SizedBox(height: 12),
+              _buildReportsAndIntegrationSection(),
               const SizedBox(height: 12),
               _buildDangerZone(),
             ],
@@ -440,6 +487,16 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             child: _pillButton(_timezone),
           ),
         ),
+        _settingRow(
+          icon: Iconsax.message,
+          title: 'Order WhatsApp Number',
+          subtitle: 'Current: $_whatsAppOrderNumber',
+          trailing: _outlineActionButton(
+            icon: Icons.edit_outlined,
+            label: 'Edit',
+            onTap: _configureWhatsAppNumber,
+          ),
+        ),
       ],
     );
   }
@@ -490,8 +547,12 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               ),
               OutlinedButton.icon(
                 onPressed: _toggleDeactivateAccount,
-                icon: Icon(_deactivated ? Iconsax.user_add : Iconsax.user_remove),
-                label: Text(_deactivated ? 'Reactivate Account' : 'Deactivate Account'),
+                icon: Icon(
+                  _deactivated ? Iconsax.user_add : Iconsax.user_remove,
+                ),
+                label: Text(
+                  _deactivated ? 'Reactivate Account' : 'Deactivate Account',
+                ),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFFB4232A),
                   side: const BorderSide(color: Color(0xFFF1AAB1)),
@@ -501,6 +562,45 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildReportsAndIntegrationSection() {
+    return _sectionCard(
+      title: 'Reports & Integration',
+      subtitle: 'Stock Excel exports and WhatsApp order routing.',
+      children: [
+        _settingRow(
+          icon: Iconsax.message,
+          title: 'WhatsApp Integration',
+          subtitle: 'Current: $_whatsAppOrderNumber',
+          trailing: _outlineActionButton(
+            icon: Icons.edit_outlined,
+            label: 'Edit',
+            onTap: _configureWhatsAppNumber,
+          ),
+        ),
+        _settingRow(
+          icon: Iconsax.document_download,
+          title: 'In-Stock Report',
+          subtitle: 'Generate Excel for products with available stock',
+          trailing: _outlineActionButton(
+            icon: Icons.download_rounded,
+            label: 'Export',
+            onTap: _isExportingReport ? () {} : () => _exportStockReport(false),
+          ),
+        ),
+        _settingRow(
+          icon: Iconsax.warning_2,
+          title: 'Out-of-Stock Report',
+          subtitle: 'Generate Excel for products with zero stock',
+          trailing: _outlineActionButton(
+            icon: Icons.download_rounded,
+            label: 'Export',
+            onTap: _isExportingReport ? () {} : () => _exportStockReport(true),
+          ),
+        ),
+      ],
     );
   }
 
@@ -709,7 +809,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () {
+              onPressed: () async {
                 if (!(formKey.currentState?.validate() ?? false)) return;
                 setState(() {
                   _fullName = fullNameController.text.trim();
@@ -719,6 +819,8 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                   _region = regionController.text.trim();
                   _department = departmentController.text.trim();
                 });
+                await _saveUserProfile();
+                if (!context.mounted) return;
                 Navigator.of(context).pop(true);
               },
               child: const Text('Save'),
@@ -917,16 +1019,22 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                       dense: true,
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(
-                        session.isCurrent ? Icons.laptop_mac : Icons.phone_iphone,
+                        session.isCurrent
+                            ? Icons.laptop_mac
+                            : Icons.phone_iphone,
                       ),
                       title: Text(session.device),
-                      subtitle: Text('${session.location} • ${session.lastActive}'),
+                      subtitle: Text(
+                        '${session.location} • ${session.lastActive}',
+                      ),
                       trailing: session.isCurrent
                           ? const Text('Current')
                           : TextButton(
                               onPressed: () {
                                 setDialogState(() {
-                                  _sessions.removeWhere((e) => e.id == session.id);
+                                  _sessions.removeWhere(
+                                    (e) => e.id == session.id,
+                                  );
                                 });
                               },
                               child: const Text('Revoke'),
@@ -988,9 +1096,9 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             ),
             FilledButton(
               onPressed: () {
-                Navigator.of(context).pop(
-                  controller.text.trim().toUpperCase() == 'DEACTIVATE',
-                );
+                Navigator.of(
+                  context,
+                ).pop(controller.text.trim().toUpperCase() == 'DEACTIVATE');
               },
               child: const Text('Confirm'),
             ),
@@ -1005,6 +1113,164 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     } else if (confirmed == false) {
       _toast('Deactivation cancelled');
     }
+  }
+
+  Future<void> _configureWhatsAppNumber() async {
+    final controller = TextEditingController(text: _whatsAppOrderNumber);
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Order WhatsApp Number'),
+        content: SizedBox(
+          width: 420,
+          child: TextFormField(
+            controller: controller,
+            decoration: const InputDecoration(
+              labelText: 'WhatsApp Number',
+              hintText: '+97455001122',
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final value = controller.text.trim();
+              if (value.isEmpty) return;
+              setState(() => _whatsAppOrderNumber = value);
+              await _saveUserProfile();
+              if (!context.mounted) return;
+              Navigator.of(context).pop(true);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (updated == true) {
+      _toast('WhatsApp number updated');
+    }
+  }
+
+  Future<void> _saveUserProfile() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    if (_isSavingProfile) return;
+    setState(() => _isSavingProfile = true);
+    try {
+      await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(user.uid)
+          .set({
+            'uid': user.uid,
+            'fullName': _fullName,
+            'email': _email,
+            'role': _role,
+            'phone': _phone,
+            'region': _region,
+            'department': _department,
+            'whatsappOrderNumber': _whatsAppOrderNumber,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+    } catch (error) {
+      if (mounted) {
+        _toast('Failed to save settings: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingProfile = false);
+      }
+    }
+  }
+
+  Future<void> _exportStockReport(bool outOfStockOnly) async {
+    if (_isExportingReport) return;
+    setState(() => _isExportingReport = true);
+    try {
+      final snapshot = await _firestore
+          .collection(FirestoreCollections.products)
+          .get();
+      final rows =
+          snapshot.docs
+              .map(ProductReportRow.fromDoc)
+              .whereType<ProductReportRow>()
+              .where(
+                (row) => outOfStockOnly
+                    ? row.stockInBaseUnit <= 0
+                    : row.stockInBaseUnit > 0,
+              )
+              .toList()
+            ..sort(
+              (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+            );
+
+      final excelBytes = _buildStockReportExcel(
+        rows: rows,
+        outOfStockOnly: outOfStockOnly,
+      );
+      if (excelBytes == null || excelBytes.isEmpty) {
+        _toast('Failed to generate report.');
+        return;
+      }
+
+      final reportType = outOfStockOnly ? 'out_of_stock' : 'in_stock';
+      final fileName =
+          'products_${reportType}_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.xlsx';
+
+      final saved = await downloadBytesFile(
+        bytes: excelBytes,
+        fileName: fileName,
+        mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      if (!saved) {
+        _toast('File download is only supported on web in this build.');
+        return;
+      }
+      _toast('Excel report generated: $fileName');
+    } catch (error) {
+      _toast('Failed to export report: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _isExportingReport = false);
+      }
+    }
+  }
+
+  List<int>? _buildStockReportExcel({
+    required List<ProductReportRow> rows,
+    required bool outOfStockOnly,
+  }) {
+    final excel = xls.Excel.createExcel();
+    final sheet = excel['Report'];
+    sheet.appendRow([
+      xls.TextCellValue('Product Code'),
+      xls.TextCellValue('Product Name'),
+      xls.TextCellValue('Category'),
+      xls.TextCellValue('Stock (Base Unit)'),
+      xls.TextCellValue('Base Unit'),
+      xls.TextCellValue('Price (QAR)'),
+      xls.TextCellValue('Status'),
+      xls.TextCellValue('Generated At'),
+    ]);
+
+    final generatedAt = _reportDateFormat.format(DateTime.now());
+    for (final row in rows) {
+      sheet.appendRow([
+        xls.TextCellValue(row.code),
+        xls.TextCellValue(row.name),
+        xls.TextCellValue(row.category),
+        xls.DoubleCellValue(row.stockInBaseUnit),
+        xls.TextCellValue(row.baseUnit),
+        xls.DoubleCellValue(row.displayPriceQar),
+        xls.TextCellValue(outOfStockOnly ? 'Out of stock' : 'In stock'),
+        xls.TextCellValue(generatedAt),
+      ]);
+    }
+    return excel.encode();
   }
 
   void _confirmLogout() {
@@ -1040,15 +1306,90 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   }
 
   String _initials(String name) {
-    final parts = name.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    final parts = name
+        .split(RegExp(r'\s+'))
+        .where((e) => e.isNotEmpty)
+        .toList();
     if (parts.isEmpty) return 'U';
     if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
     return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
         .toUpperCase();
   }
 
+  String _valueOr(dynamic value, {required String fallback}) {
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+    return fallback;
+  }
+
   void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class ProductReportRow {
+  final String code;
+  final String name;
+  final String category;
+  final double stockInBaseUnit;
+  final String baseUnit;
+  final double displayPriceQar;
+
+  const ProductReportRow({
+    required this.code,
+    required this.name,
+    required this.category,
+    required this.stockInBaseUnit,
+    required this.baseUnit,
+    required this.displayPriceQar,
+  });
+
+  static ProductReportRow? fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    if (data == null) return null;
+    final category = _mapOf(data['category']);
+    final baseUnit = _mapOf(data['baseUnit']);
+    final inventory = _mapOf(data['inventory']);
+    final metrics = _mapOf(data['metrics']);
+    final productCode =
+        (data['productCode'] as String?)?.trim().isNotEmpty == true
+        ? (data['productCode'] as String).trim()
+        : doc.id;
+
+    return ProductReportRow(
+      code: productCode,
+      name: ((data['productName'] as String?) ?? '').trim().isEmpty
+          ? 'Unnamed Product'
+          : (data['productName'] as String).trim(),
+      category: ((category['name'] as String?) ?? '').trim().isEmpty
+          ? 'Uncategorized'
+          : (category['name'] as String).trim(),
+      stockInBaseUnit:
+          _doubleOf(inventory['availableQtyBaseUnit']) ??
+          _doubleOf(inventory['baseUnitQty']) ??
+          0,
+      baseUnit: ((baseUnit['name'] as String?) ?? '').trim().isEmpty
+          ? 'Piece'
+          : (baseUnit['name'] as String).trim(),
+      displayPriceQar: _doubleOf(metrics['displayPriceQar']) ?? 0,
+    );
+  }
+
+  static Map<String, dynamic> _mapOf(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, v) => MapEntry(key.toString(), v));
+    }
+    return <String, dynamic>{};
+  }
+
+  static double? _doubleOf(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value.trim());
+    return null;
   }
 }
 
