@@ -1,16 +1,20 @@
-# products_catelogs
+# Products Catalogs (Web Branch)
 
-A new Flutter project.
+This branch is configured for web-first usage.
 
-## Getting Started
+## Run
 
-This project is a starting point for a Flutter application.
+```bash
+flutter pub get
+flutter run -d chrome
+```
 
-A few resources to get you started if this is your first Flutter project:
+## Structure
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- `lib/core/constants/`
+  - `app_colors.dart`
+  - `app_images.dart`
+  - `app_strings.dart`
+- `lib/authentication/`
+  - Single auth screen (`sign in` / `sign up`) with in-place form switching
+  - Web auth shell layout
