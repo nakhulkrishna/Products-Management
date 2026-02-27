@@ -5,6 +5,7 @@ class AppStrings {
   static const dashboardTitle = 'Dashboard';
   static const productsTitle = 'Products';
   static const ordersTitle = 'Orders';
+  static const customersTitle = 'Customers';
   static const settingsTitle = 'Settings';
-    static const staffsTitle = 'Staffs';
+  static const staffsTitle = 'Staffs';
 }

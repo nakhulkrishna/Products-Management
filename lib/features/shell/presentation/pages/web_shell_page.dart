@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:products_catelogs/core/constants/app_colors.dart';
 import 'package:products_catelogs/features/auth/application/auth_providers.dart';
+import 'package:products_catelogs/features/customers/presentation/pages/customers_tab_page.dart';
 import 'package:products_catelogs/features/dashboard/presentation/pages/dashboard_tab_page.dart';
 import 'package:products_catelogs/features/orders/presentation/pages/orders_tab_page.dart';
 import 'package:products_catelogs/features/products/presentation/pages/products_tab_page.dart';
@@ -73,6 +74,8 @@ class _WebShellPageState extends ConsumerState<WebShellPage> {
         return const ProductsTabPage();
       case SidebarTab.orders:
         return const OrdersTabPage();
+      case SidebarTab.customers:
+        return const CustomersTabPage();
       case SidebarTab.staffs:
         return const StaffsTabPage();
       case SidebarTab.settings:
@@ -85,9 +88,9 @@ class _WebShellPageState extends ConsumerState<WebShellPage> {
       await ref.read(authRepositoryProvider).signOut();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Logout failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Logout failed: $e')));
     }
   }
 
@@ -102,6 +105,9 @@ class _WebShellPageState extends ConsumerState<WebShellPage> {
     SidebarTab? target;
     if (normalized.contains('order')) {
       target = SidebarTab.orders;
+    } else if (normalized.contains('customer') ||
+        normalized.contains('client')) {
+      target = SidebarTab.customers;
     } else if (normalized.contains('product') ||
         normalized.contains('category')) {
       target = SidebarTab.products;
@@ -122,9 +128,9 @@ class _WebShellPageState extends ConsumerState<WebShellPage> {
         SnackBar(content: Text('Opened ${target.label} for "$query".')),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No module mapped for "$query".')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('No module mapped for "$query".')));
     }
   }
 }

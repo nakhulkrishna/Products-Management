@@ -1265,32 +1265,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
     }
 
     if (errors.isNotEmpty) {
-      showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Validation Required'),
-          content: SizedBox(
-            width: 520,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final e in errors.take(8))
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text('• $e'),
-                  ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
+      _showValidationSideSheet(errors);
       return;
     }
 
@@ -1361,6 +1336,94 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
       ).showSnackBar(SnackBar(content: Text('Failed to save product: $error')));
       setState(() => _isSubmitting = false);
     }
+  }
+
+  Future<void> _showValidationSideSheet(List<String> errors) async {
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Validation Required',
+      barrierColor: const Color(0x400F172A),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, _, __) {
+        final width = MediaQuery.of(context).size.width;
+        final sheetWidth = width > 1080 ? 520.0 : (width > 720 ? 460.0 : width);
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.white,
+            child: SafeArea(
+              child: SizedBox(
+                width: sheetWidth,
+                height: double.infinity,
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Validation Required',
+                              style: TextStyle(
+                                color: Color(0xFF111827),
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close_rounded, size: 20),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.all(18),
+                        children: [
+                          for (final e in errors.take(8))
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Text('• $e'),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('OK'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, _, child) {
+        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
   }
 }
 

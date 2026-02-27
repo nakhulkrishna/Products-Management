@@ -450,6 +450,14 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           title: 'Currency',
           subtitle: 'Default transaction currency',
           trailing: PopupMenuButton<String>(
+            color: Colors.white,
+            surfaceTintColor: Colors.white,
+            elevation: 8,
+            shadowColor: const Color(0x1A0F172A),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            offset: const Offset(0, 42),
             onSelected: (value) => setState(() => _currency = value),
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'QAR', child: Text('QAR')),
@@ -463,6 +471,14 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           title: 'Language',
           subtitle: 'Interface language',
           trailing: PopupMenuButton<String>(
+            color: Colors.white,
+            surfaceTintColor: Colors.white,
+            elevation: 8,
+            shadowColor: const Color(0x1A0F172A),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            offset: const Offset(0, 42),
             onSelected: (value) => setState(() => _language = value),
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'English', child: Text('English')),
@@ -476,6 +492,14 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           title: 'Timezone',
           subtitle: 'Used for reports and schedules',
           trailing: PopupMenuButton<String>(
+            color: Colors.white,
+            surfaceTintColor: Colors.white,
+            elevation: 8,
+            shadowColor: const Color(0x1A0F172A),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            offset: const Offset(0, 42),
             onSelected: (value) => setState(() => _timezone = value),
             itemBuilder: (context) => const [
               PopupMenuItem(
@@ -754,154 +778,134 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     final departmentController = TextEditingController(text: _department);
     final formKey = GlobalKey<FormState>();
 
-    final updated = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Edit Profile'),
-          content: SizedBox(
-            width: 430,
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: fullNameController,
-                    decoration: const InputDecoration(labelText: 'Full Name'),
-                    validator: (value) =>
-                        (value ?? '').trim().isEmpty ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: emailController,
-                    decoration: const InputDecoration(labelText: 'Email'),
-                    validator: (value) =>
-                        (value ?? '').trim().isEmpty ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: roleController,
-                    decoration: const InputDecoration(labelText: 'Role'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: phoneController,
-                    decoration: const InputDecoration(labelText: 'Phone'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: regionController,
-                    decoration: const InputDecoration(labelText: 'Region'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: departmentController,
-                    decoration: const InputDecoration(labelText: 'Department'),
-                  ),
-                ],
-              ),
+    final updated = await _showSideSheet<bool>(
+      title: 'Edit Profile',
+      body: Form(
+        key: formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: fullNameController,
+              decoration: const InputDecoration(labelText: 'Full Name'),
+              validator: (value) =>
+                  (value ?? '').trim().isEmpty ? 'Required' : null,
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: emailController,
+              decoration: const InputDecoration(labelText: 'Email'),
+              validator: (value) =>
+                  (value ?? '').trim().isEmpty ? 'Required' : null,
             ),
-            FilledButton(
-              onPressed: () async {
-                if (!(formKey.currentState?.validate() ?? false)) return;
-                setState(() {
-                  _fullName = fullNameController.text.trim();
-                  _email = emailController.text.trim();
-                  _role = roleController.text.trim();
-                  _phone = phoneController.text.trim();
-                  _region = regionController.text.trim();
-                  _department = departmentController.text.trim();
-                });
-                await _saveUserProfile();
-                if (!context.mounted) return;
-                Navigator.of(context).pop(true);
-              },
-              child: const Text('Save'),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: roleController,
+              decoration: const InputDecoration(labelText: 'Role'),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: phoneController,
+              decoration: const InputDecoration(labelText: 'Phone'),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: regionController,
+              decoration: const InputDecoration(labelText: 'Region'),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: departmentController,
+              decoration: const InputDecoration(labelText: 'Department'),
             ),
           ],
-        );
-      },
+        ),
+      ),
+      actions: [
+        OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () async {
+            final navigator = Navigator.of(context);
+            if (!(formKey.currentState?.validate() ?? false)) return;
+            setState(() {
+              _fullName = fullNameController.text.trim();
+              _email = emailController.text.trim();
+              _role = roleController.text.trim();
+              _phone = phoneController.text.trim();
+              _region = regionController.text.trim();
+              _department = departmentController.text.trim();
+            });
+            await _saveUserProfile();
+            if (!mounted) return;
+            navigator.pop(true);
+          },
+          child: const Text('Save'),
+        ),
+      ],
     );
 
     if (updated == true) _toast('Profile updated');
   }
 
   Future<void> _confirmResetPassword() async {
-    final shouldSend = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Reset Password'),
-          content: Text('Send a password reset link to $_email?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Send Link'),
-            ),
-          ],
-        );
-      },
+    final shouldSend = await _showSideSheet<bool>(
+      title: 'Reset Password',
+      body: Text('Send a password reset link to $_email?'),
+      actions: [
+        OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Send Link'),
+        ),
+      ],
     );
     if (shouldSend == true) _toast('Password reset link sent');
   }
 
   Future<void> _managePermissions() async {
     final localPermissions = Map<String, bool>.from(_permissions);
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Team Permissions'),
-              content: SizedBox(
-                width: 380,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: localPermissions.keys.map((module) {
-                    return SwitchListTile(
-                      dense: true,
-                      title: Text(module),
-                      value: localPermissions[module] ?? false,
-                      onChanged: (value) {
-                        setDialogState(() => localPermissions[module] = value);
-                      },
-                    );
-                  }).toList(),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    setState(() {
-                      _permissions
-                        ..clear()
-                        ..addAll(localPermissions);
-                    });
-                    Navigator.of(context).pop(true);
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
+    final saved = await _showSideSheet<bool>(
+      title: 'Team Permissions',
+      body: StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: localPermissions.keys.map((module) {
+              return SwitchListTile(
+                dense: true,
+                title: Text(module),
+                value: localPermissions[module] ?? false,
+                onChanged: (value) {
+                  setDialogState(() => localPermissions[module] = value);
+                },
+              );
+            }).toList(),
+          );
+        },
+      ),
+      actions: [
+        OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            setState(() {
+              _permissions
+                ..clear()
+                ..addAll(localPermissions);
+            });
+            Navigator.of(context).pop(true);
           },
-        );
-      },
+          child: const Text('Save'),
+        ),
+      ],
     );
     if (saved == true) _toast('Permissions updated');
   }
@@ -909,157 +913,133 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   Future<void> _manageNotificationRules() async {
     var failedMinutes = _failedOrderAlertMinutes;
     var lowStock = _lowStockThreshold;
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Notification Rules'),
-              content: SizedBox(
-                width: 420,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Text('Failed order alert after (minutes)'),
-                        ),
-                        SizedBox(
-                          width: 80,
-                          child: TextFormField(
-                            initialValue: failedMinutes.toString(),
-                            keyboardType: TextInputType.number,
-                            onChanged: (value) {
-                              final parsed = int.tryParse(value);
-                              if (parsed != null) failedMinutes = parsed;
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Text('Low stock threshold (units)'),
-                        ),
-                        SizedBox(
-                          width: 80,
-                          child: TextFormField(
-                            initialValue: lowStock.toString(),
-                            keyboardType: TextInputType.number,
-                            onChanged: (value) {
-                              final parsed = int.tryParse(value);
-                              if (parsed != null) lowStock = parsed;
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    SwitchListTile(
-                      dense: true,
-                      title: const Text('Email Notifications'),
-                      value: _emailNotifications,
+    final saved = await _showSideSheet<bool>(
+      title: 'Notification Rules',
+      body: StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('Failed order alert after (minutes)'),
+                  ),
+                  SizedBox(
+                    width: 80,
+                    child: TextFormField(
+                      initialValue: failedMinutes.toString(),
+                      keyboardType: TextInputType.number,
                       onChanged: (value) {
-                        setDialogState(() => _emailNotifications = value);
+                        final parsed = int.tryParse(value);
+                        if (parsed != null) failedMinutes = parsed;
                       },
                     ),
-                    SwitchListTile(
-                      dense: true,
-                      title: const Text('SMS Notifications'),
-                      value: _smsNotifications,
-                      onChanged: (value) {
-                        setDialogState(() => _smsNotifications = value);
-                      },
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    setState(() {
-                      _failedOrderAlertMinutes = failedMinutes;
-                      _lowStockThreshold = lowStock;
-                    });
-                    Navigator.of(context).pop(true);
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Expanded(child: Text('Low stock threshold (units)')),
+                  SizedBox(
+                    width: 80,
+                    child: TextFormField(
+                      initialValue: lowStock.toString(),
+                      keyboardType: TextInputType.number,
+                      onChanged: (value) {
+                        final parsed = int.tryParse(value);
+                        if (parsed != null) lowStock = parsed;
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SwitchListTile(
+                dense: true,
+                title: const Text('Email Notifications'),
+                value: _emailNotifications,
+                onChanged: (value) {
+                  setDialogState(() => _emailNotifications = value);
+                },
+              ),
+              SwitchListTile(
+                dense: true,
+                title: const Text('SMS Notifications'),
+                value: _smsNotifications,
+                onChanged: (value) {
+                  setDialogState(() => _smsNotifications = value);
+                },
+              ),
+            ],
+          );
+        },
+      ),
+      actions: [
+        OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            setState(() {
+              _failedOrderAlertMinutes = failedMinutes;
+              _lowStockThreshold = lowStock;
+            });
+            Navigator.of(context).pop(true);
           },
-        );
-      },
+          child: const Text('Save'),
+        ),
+      ],
     );
     if (saved == true) _toast('Notification rules saved');
   }
 
   Future<void> _manageSessions() async {
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Active Sessions'),
-              content: SizedBox(
-                width: 440,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: _sessions.map((session) {
-                    return ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        session.isCurrent
-                            ? Icons.laptop_mac
-                            : Icons.phone_iphone,
+    final saved = await _showSideSheet<bool>(
+      title: 'Active Sessions',
+      body: StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: _sessions.map((session) {
+              return ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  session.isCurrent ? Icons.laptop_mac : Icons.phone_iphone,
+                ),
+                title: Text(session.device),
+                subtitle: Text('${session.location} • ${session.lastActive}'),
+                trailing: session.isCurrent
+                    ? const Text('Current')
+                    : TextButton(
+                        onPressed: () {
+                          setDialogState(() {
+                            _sessions.removeWhere((e) => e.id == session.id);
+                          });
+                        },
+                        child: const Text('Revoke'),
                       ),
-                      title: Text(session.device),
-                      subtitle: Text(
-                        '${session.location} • ${session.lastActive}',
-                      ),
-                      trailing: session.isCurrent
-                          ? const Text('Current')
-                          : TextButton(
-                              onPressed: () {
-                                setDialogState(() {
-                                  _sessions.removeWhere(
-                                    (e) => e.id == session.id,
-                                  );
-                                });
-                              },
-                              child: const Text('Revoke'),
-                            ),
-                    );
-                  }).toList(),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Close'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    setState(() {});
-                    Navigator.of(context).pop(true);
-                  },
-                  child: const Text('Apply'),
-                ),
-              ],
-            );
+              );
+            }).toList(),
+          );
+        },
+      ),
+      actions: [
+        OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Close'),
+        ),
+        FilledButton(
+          onPressed: () {
+            setState(() {});
+            Navigator.of(context).pop(true);
           },
-        );
-      },
+          child: const Text('Apply'),
+        ),
+      ],
     );
     if (saved == true) _toast('Sessions updated');
   }
@@ -1072,39 +1052,34 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     }
 
     final controller = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Deactivate Account'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Type DEACTIVATE to confirm.'),
-              const SizedBox(height: 8),
-              TextField(
-                controller: controller,
-                decoration: const InputDecoration(hintText: 'DEACTIVATE'),
-              ),
-            ],
+    final confirmed = await _showSideSheet<bool>(
+      title: 'Deactivate Account',
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Type DEACTIVATE to confirm.'),
+          const SizedBox(height: 8),
+          TextField(
+            controller: controller,
+            decoration: const InputDecoration(hintText: 'DEACTIVATE'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(
-                  context,
-                ).pop(controller.text.trim().toUpperCase() == 'DEACTIVATE');
-              },
-              child: const Text('Confirm'),
-            ),
-          ],
-        );
-      },
+        ],
+      ),
+      actions: [
+        OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            Navigator.of(
+              context,
+            ).pop(controller.text.trim().toUpperCase() == 'DEACTIVATE');
+          },
+          child: const Text('Confirm'),
+        ),
+      ],
     );
 
     if (confirmed == true) {
@@ -1117,38 +1092,33 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
 
   Future<void> _configureWhatsAppNumber() async {
     final controller = TextEditingController(text: _whatsAppOrderNumber);
-    final updated = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Order WhatsApp Number'),
-        content: SizedBox(
-          width: 420,
-          child: TextFormField(
-            controller: controller,
-            decoration: const InputDecoration(
-              labelText: 'WhatsApp Number',
-              hintText: '+97455001122',
-            ),
-          ),
+    final updated = await _showSideSheet<bool>(
+      title: 'Order WhatsApp Number',
+      body: TextFormField(
+        controller: controller,
+        decoration: const InputDecoration(
+          labelText: 'WhatsApp Number',
+          hintText: '+97455001122',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final value = controller.text.trim();
-              if (value.isEmpty) return;
-              setState(() => _whatsAppOrderNumber = value);
-              await _saveUserProfile();
-              if (!context.mounted) return;
-              Navigator.of(context).pop(true);
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
+      actions: [
+        OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () async {
+            final navigator = Navigator.of(context);
+            final value = controller.text.trim();
+            if (value.isEmpty) return;
+            setState(() => _whatsAppOrderNumber = value);
+            await _saveUserProfile();
+            if (!mounted) return;
+            navigator.pop(true);
+          },
+          child: const Text('Save'),
+        ),
+      ],
     );
     if (updated == true) {
       _toast('WhatsApp number updated');
@@ -1274,32 +1244,106 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   }
 
   void _confirmLogout() {
-    showDialog<void>(
+    _showSideSheet<void>(
+      title: 'Logout',
+      body: const Text('Are you sure you want to logout from this account?'),
+      actions: [
+        OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+            final onLogout = widget.onLogout;
+            if (onLogout != null) {
+              onLogout();
+            } else {
+              _toast('Logged out');
+            }
+          },
+          child: const Text('Logout'),
+        ),
+      ],
+    );
+  }
+
+  Future<T?> _showSideSheet<T>({
+    required String title,
+    required Widget body,
+    List<Widget> actions = const [],
+  }) {
+    return showGeneralDialog<T>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Logout'),
-          content: const Text(
-            'Are you sure you want to logout from this account?',
+      barrierDismissible: true,
+      barrierLabel: title,
+      barrierColor: const Color(0x400F172A),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, _, __) {
+        final width = MediaQuery.of(context).size.width;
+        final sheetWidth = width > 1080 ? 500.0 : (width > 720 ? 440.0 : width);
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.white,
+            child: SafeArea(
+              child: SizedBox(
+                width: sheetWidth,
+                height: double.infinity,
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: const TextStyle(
+                                color: Color(0xFF111827),
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Iconsax.close_circle, size: 20),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(18),
+                        child: body,
+                      ),
+                    ),
+                    if (actions.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                        child: Wrap(spacing: 10, runSpacing: 10, children: actions),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                final onLogout = widget.onLogout;
-                if (onLogout != null) {
-                  onLogout();
-                } else {
-                  _toast('Logged out');
-                }
-              },
-              child: const Text('Logout'),
-            ),
-          ],
+        );
+      },
+      transitionBuilder: (context, animation, _, child) {
+        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
         );
       },
     );

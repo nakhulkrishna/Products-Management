@@ -253,21 +253,66 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
               ),
             ),
           ),
-          IconButton(
-            onPressed: _busy ? null : () => _renameCategory(category),
-            icon: const Icon(
-              Icons.edit_outlined,
-              size: 18,
-              color: Color(0xFF374151),
+          PopupMenuButton<String>(
+            enabled: !_busy,
+            color: Colors.white,
+            surfaceTintColor: Colors.white,
+            elevation: 8,
+            shadowColor: const Color(0x1A0F172A),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
             ),
-          ),
-          IconButton(
-            onPressed: _busy ? null : () => _deleteCategory(category),
-            icon: const Icon(
-              Icons.delete_outline_rounded,
-              size: 18,
-              color: Color(0xFFE65A5A),
+            offset: const Offset(0, 42),
+            icon: Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFDDE2EA)),
+              ),
+              child: const Icon(
+                Icons.more_vert_rounded,
+                size: 18,
+                color: Color(0xFF4B5563),
+              ),
             ),
+            onSelected: (value) {
+              switch (value) {
+                case 'rename':
+                  _renameCategory(category);
+                  break;
+                case 'delete':
+                  _deleteCategory(category);
+                  break;
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'rename',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_outlined, size: 18, color: Color(0xFF374151)),
+                    SizedBox(width: 10),
+                    Text('Rename'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.delete_outline_rounded,
+                      size: 18,
+                      color: Color(0xFFE65A5A),
+                    ),
+                    SizedBox(width: 10),
+                    Text('Delete'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),

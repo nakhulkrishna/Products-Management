@@ -10,6 +10,8 @@ enum _StaffStatus { active, onLeave, inactive }
 
 enum _StaffFilter { all, active, onLeave, inactive }
 
+enum _SalesmanAction { view, edit, deleteImage, toggleStatus, delete }
+
 class _Salesman {
   final String id;
   final String name;
@@ -91,7 +93,11 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
   bool _loading = true;
   String? _loadError;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _salesmenSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ordersSub;
+  final ScrollController _tableScrollController = ScrollController();
   final Set<String> _selectedIds = <String>{};
+  final Map<String, int> _completedDealsBySalesman = <String, int>{};
+  final Map<String, double> _completedRevenueBySalesman = <String, double>{};
 
   static const List<_Salesman> _seedSalesmen = [
     _Salesman(
@@ -270,13 +276,62 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
   void initState() {
     super.initState();
     _subscribeSalesmen();
+    _subscribeCompletedDeals();
   }
 
   @override
   void dispose() {
     _salesmenSub?.cancel();
+    _ordersSub?.cancel();
     _searchController.dispose();
+    _tableScrollController.dispose();
     super.dispose();
+  }
+
+  void _subscribeCompletedDeals() {
+    _ordersSub?.cancel();
+    _ordersSub = _firestore
+        .collection(FirestoreCollections.orders)
+        .snapshots()
+        .listen(
+          (snapshot) {
+            final counts = <String, int>{};
+            final revenues = <String, double>{};
+            for (final doc in snapshot.docs) {
+              final data = doc.data();
+              final rawStatus = _stringOr(data['orderStatus']).toLowerCase();
+              final isCompleted =
+                  rawStatus == 'delivered' ||
+                  rawStatus == 'completed' ||
+                  rawStatus == 'complete';
+              if (!isCompleted) continue;
+              final salesmanName = _stringOr(data['salesmanName']);
+              if (salesmanName.isEmpty) continue;
+              final key = salesmanName.toLowerCase().trim();
+              final amount = _doubleOrWithLog(
+                data['amountQar'],
+                docId: doc.id,
+                field: 'amountQar',
+              );
+              counts.update(key, (value) => value + 1, ifAbsent: () => 1);
+              revenues.update(key, (value) => value + amount, ifAbsent: () => amount);
+            }
+            if (!mounted) return;
+            setState(() {
+              _completedDealsBySalesman
+                ..clear()
+                ..addAll(counts);
+              _completedRevenueBySalesman
+                ..clear()
+                ..addAll(revenues);
+            });
+          },
+          onError: (error) {
+            debugPrint(
+              '[StaffsTabPage] Failed to load completed order counts: $error',
+            );
+          },
+        );
   }
 
   void _subscribeSalesmen() {
@@ -336,9 +391,21 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       phone: _stringOr(data['phone'], fallback: ''),
       email: _stringOr(data['email'], fallback: ''),
       imageUrl: _nullableString(data['imageUrl']),
-      dealsClosed: _intOr(data['dealsClosed']),
-      monthlyTargetQar: _doubleOr(data['monthlyTargetQar']),
-      achievedSalesQar: _doubleOr(data['achievedSalesQar']),
+      dealsClosed: _intOrWithLog(
+        data['dealsClosed'],
+        docId: doc.id,
+        field: 'dealsClosed',
+      ),
+      monthlyTargetQar: _doubleOrWithLog(
+        data['monthlyTargetQar'],
+        docId: doc.id,
+        field: 'monthlyTargetQar',
+      ),
+      achievedSalesQar: _doubleOrWithLog(
+        data['achievedSalesQar'],
+        docId: doc.id,
+        field: 'achievedSalesQar',
+      ),
       status: _statusFromString(_stringOr(data['status'], fallback: 'active')),
     );
   }
@@ -404,16 +471,36 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
     return null;
   }
 
-  int _intOr(dynamic value) {
+  int _intOrWithLog(
+    dynamic value, {
+    required String docId,
+    required String field,
+  }) {
     if (value is int) return value;
     if (value is num) return value.toInt();
-    return int.tryParse('$value') ?? 0;
+    final parsed = int.tryParse('$value');
+    if (parsed != null) return parsed;
+    debugPrint(
+      '[StaffsTabPage] Invalid "$field" for doc "$docId". '
+      'Value: "$value". Falling back to 0.',
+    );
+    return 0;
   }
 
-  double _doubleOr(dynamic value) {
+  double _doubleOrWithLog(
+    dynamic value, {
+    required String docId,
+    required String field,
+  }) {
     if (value is double) return value;
     if (value is num) return value.toDouble();
-    return double.tryParse('$value') ?? 0;
+    final parsed = double.tryParse('$value');
+    if (parsed != null) return parsed;
+    debugPrint(
+      '[StaffsTabPage] Invalid "$field" for doc "$docId". '
+      'Value: "$value". Falling back to 0.',
+    );
+    return 0;
   }
 
   _StaffStatus _statusFromString(String raw) {
@@ -748,6 +835,12 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
 
   Widget _buildFilterButton() {
     return PopupMenuButton<_StaffFilter>(
+      color: Colors.white,
+      surfaceTintColor: Colors.white,
+      elevation: 8,
+      shadowColor: const Color(0x1A0F172A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      offset: const Offset(0, 42),
       onSelected: (value) {
         setState(() {
           _statusFilter = value;
@@ -794,8 +887,10 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
         const Divider(height: 1, color: Color(0xFFE8EBF0)),
         Expanded(
           child: Scrollbar(
+            controller: _tableScrollController,
             thumbVisibility: true,
             child: ListView.separated(
+              controller: _tableScrollController,
               itemCount: salesmen.length,
               separatorBuilder: (_, __) =>
                   const Divider(height: 1, color: Color(0xFFE8EBF0)),
@@ -927,14 +1022,17 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                 ],
               ),
             ),
-            _RowCell(width: 130, text: salesman.dealsClosed.toString()),
+            _RowCell(
+              width: 130,
+              text: _resolvedDealsClosed(salesman).toString(),
+            ),
             _RowCell(
               width: 152,
               text: _currency.format(salesman.monthlyTargetQar),
             ),
             _RowCell(
               width: 160,
-              text: _currency.format(salesman.achievedSalesQar),
+              text: _currency.format(_resolvedAchievedSales(salesman)),
               color: const Color(0xFF1F8A70),
             ),
             SizedBox(
@@ -969,39 +1067,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                 ),
               ),
             ),
-            SizedBox(
-              width: 132,
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => _editSalesman(salesman),
-                    icon: const Icon(
-                      Icons.edit_outlined,
-                      size: 18,
-                      color: Color(0xFF374151),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: salesman.imageUrl == null
-                        ? null
-                        : () => _removeStaffImage(salesman),
-                    icon: const Icon(
-                      Icons.image_not_supported_outlined,
-                      size: 18,
-                      color: Color(0xFFB08900),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => _deleteStaff(salesman),
-                    icon: const Icon(
-                      Icons.delete_outline_rounded,
-                      size: 18,
-                      color: Color(0xFFE65A5A),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            SizedBox(width: 132, child: _buildSalesmanActionMenu(salesman)),
           ],
         ),
       ),
@@ -1109,47 +1175,260 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
               _infoRow('Region', salesman.region),
               _infoRow('Phone', salesman.phone),
               _infoRow('Email', salesman.email),
-              _infoRow('Deals Closed', salesman.dealsClosed.toString()),
+              _infoRow(
+                'Deals Closed',
+                _resolvedDealsClosed(salesman).toString(),
+              ),
               _infoRow('Target', _currency.format(salesman.monthlyTargetQar)),
-              _infoRow('Achieved', _currency.format(salesman.achievedSalesQar)),
+              _infoRow(
+                'Achieved',
+                _currency.format(_resolvedAchievedSales(salesman)),
+              ),
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => _editSalesman(salesman),
-                    icon: const Icon(Icons.edit_outlined, size: 16),
-                    label: const Text('Edit'),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: salesman.imageUrl == null
-                        ? null
-                        : () => _removeStaffImage(salesman),
-                    icon: const Icon(Icons.image_not_supported_outlined, size: 16),
-                    label: const Text('Delete Image'),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => _deleteStaff(salesman),
-                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                    label: const Text('Delete'),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => _toggleDeactivateStaff(salesman),
-                    icon: const Icon(Iconsax.user_minus, size: 16),
-                    label: Text(
-                      salesman.status == _StaffStatus.inactive
-                          ? 'Activate'
-                          : 'Deactivate',
-                    ),
-                  ),
-                ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: _buildSalesmanActionMenu(salesman),
               ),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSalesmanActionMenu(_Salesman salesman) {
+    final canDeleteImage = salesman.imageUrl != null;
+    final isInactive = salesman.status == _StaffStatus.inactive;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: PopupMenuButton<_SalesmanAction>(
+        tooltip: 'Salesman options',
+        color: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 8,
+        shadowColor: const Color(0x1A0F172A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        offset: const Offset(0, 42),
+        icon: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFDDE2EA)),
+          ),
+          child: const Icon(Iconsax.setting, size: 18, color: Color(0xFF4B5563)),
+        ),
+        onSelected: (action) => _handleSalesmanAction(salesman, action),
+        itemBuilder: (context) => [
+          const PopupMenuItem<_SalesmanAction>(
+            value: _SalesmanAction.view,
+            child: Row(
+              children: [
+                Icon(Iconsax.monitor, size: 18, color: Color(0xFF2277B8)),
+                SizedBox(width: 10),
+                Text('View'),
+              ],
+            ),
+          ),
+          const PopupMenuItem<_SalesmanAction>(
+            value: _SalesmanAction.edit,
+            child: Row(
+              children: [
+                Icon(Iconsax.setting, size: 18, color: Color(0xFF374151)),
+                SizedBox(width: 10),
+                Text('Edit'),
+              ],
+            ),
+          ),
+          PopupMenuItem<_SalesmanAction>(
+            value: _SalesmanAction.deleteImage,
+            enabled: canDeleteImage,
+            child: const Row(
+              children: [
+                Icon(Iconsax.gallery_slash, size: 18, color: Color(0xFFB08900)),
+                SizedBox(width: 10),
+                Text('Delete Image'),
+              ],
+            ),
+          ),
+          PopupMenuItem<_SalesmanAction>(
+            value: _SalesmanAction.toggleStatus,
+            child: Row(
+              children: [
+                Icon(
+                  isInactive ? Iconsax.user_add : Iconsax.user_minus,
+                  size: 18,
+                  color: const Color(0xFF2EA8A5),
+                ),
+                const SizedBox(width: 10),
+                Text(isInactive ? 'Activate' : 'Deactivate'),
+              ],
+            ),
+          ),
+          const PopupMenuItem<_SalesmanAction>(
+            value: _SalesmanAction.delete,
+            child: Row(
+              children: [
+                Icon(Iconsax.trash, size: 18, color: Color(0xFFE65A5A)),
+                SizedBox(width: 10),
+                Text('Delete'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleSalesmanAction(
+    _Salesman salesman,
+    _SalesmanAction action,
+  ) async {
+    switch (action) {
+      case _SalesmanAction.view:
+        await _viewSalesman(salesman);
+        break;
+      case _SalesmanAction.edit:
+        await _editSalesman(salesman);
+        break;
+      case _SalesmanAction.deleteImage:
+        if (salesman.imageUrl != null) {
+          await _removeStaffImage(salesman);
+        }
+        break;
+      case _SalesmanAction.toggleStatus:
+        await _toggleDeactivateStaff(salesman);
+        break;
+      case _SalesmanAction.delete:
+        await _deleteStaff(salesman);
+        break;
+    }
+  }
+
+  Future<void> _viewSalesman(_Salesman salesman) async {
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Salesman details',
+      barrierColor: const Color(0x400F172A),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, _, __) {
+        final width = MediaQuery.of(context).size.width;
+        final sheetWidth = width > 1080 ? 460.0 : (width > 720 ? 420.0 : width);
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.white,
+            child: SafeArea(
+              child: SizedBox(
+                width: sheetWidth,
+                height: double.infinity,
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Salesman ${salesman.id}',
+                              style: const TextStyle(
+                                color: Color(0xFF111827),
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Iconsax.close_circle, size: 20),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.all(18),
+                        children: [
+                          _salesmanDetailRow('Staff ID', salesman.id),
+                          _salesmanDetailRow('Name', salesman.name),
+                          _salesmanDetailRow('Role', salesman.role),
+                          _salesmanDetailRow('Region', salesman.region),
+                          _salesmanDetailRow('Phone', salesman.phone),
+                          _salesmanDetailRow('Email', salesman.email),
+                          _salesmanDetailRow(
+                            'Deals Closed',
+                            _resolvedDealsClosed(salesman).toString(),
+                          ),
+                          _salesmanDetailRow(
+                            'Target',
+                            _currency.format(salesman.monthlyTargetQar),
+                          ),
+                          _salesmanDetailRow(
+                            'Achieved',
+                            _currency.format(_resolvedAchievedSales(salesman)),
+                          ),
+                          _salesmanDetailRow(
+                            'Status',
+                            _statusStyle(salesman.status).$4,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, _, child) {
+        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
+  }
+
+  Widget _salesmanDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFF111827),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1533,6 +1812,26 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
         .toUpperCase();
   }
 
+  int _resolvedDealsClosed(_Salesman salesman) {
+    final computed =
+        _completedDealsBySalesman[salesman.name.toLowerCase().trim()] ?? 0;
+    if (computed > 0) return computed;
+    if (_salesmen.length == 1 && _completedDealsBySalesman.isNotEmpty) {
+      return _completedDealsBySalesman.values.fold<int>(0, (a, b) => a + b);
+    }
+    return salesman.dealsClosed;
+  }
+
+  double _resolvedAchievedSales(_Salesman salesman) {
+    final computed =
+        _completedRevenueBySalesman[salesman.name.toLowerCase().trim()] ?? 0;
+    if (computed > 0) return computed;
+    if (_salesmen.length == 1 && _completedRevenueBySalesman.isNotEmpty) {
+      return _completedRevenueBySalesman.values.fold<double>(0, (a, b) => a + b);
+    }
+    return salesman.achievedSalesQar;
+  }
+
   Future<_Salesman?> _showSalesmanEditorDialog({_Salesman? existing}) async {
     final nameController = TextEditingController(text: existing?.name ?? '');
     final roleController = TextEditingController(
@@ -1649,6 +1948,8 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                     TextFormField(
                       controller: regionController,
                       decoration: const InputDecoration(labelText: 'Region'),
+                      validator: (value) =>
+                          (value ?? '').trim().isEmpty ? 'Required' : null,
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<_StaffStatus>(
@@ -1684,6 +1985,8 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                     TextFormField(
                       controller: phoneController,
                       decoration: const InputDecoration(labelText: 'Phone'),
+                      validator: (value) =>
+                          (value ?? '').trim().isEmpty ? 'Required' : null,
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
@@ -1719,12 +2022,30 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                       controller: dealsController,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(labelText: 'Deals Closed'),
+                      validator: (value) {
+                        final raw = (value ?? '').trim();
+                        if (raw.isEmpty) return 'Required';
+                        final parsed = int.tryParse(raw);
+                        if (parsed == null || parsed < 0) {
+                          return 'Enter a valid number';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: targetController,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(labelText: 'Target (QAR)'),
+                      validator: (value) {
+                        final raw = (value ?? '').trim();
+                        if (raw.isEmpty) return 'Required';
+                        final parsed = double.tryParse(raw);
+                        if (parsed == null || parsed < 0) {
+                          return 'Enter a valid amount';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
@@ -1733,6 +2054,15 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                       decoration: const InputDecoration(
                         labelText: 'Achieved Sales (QAR)',
                       ),
+                      validator: (value) {
+                        final raw = (value ?? '').trim();
+                        if (raw.isEmpty) return 'Required';
+                        final parsed = double.tryParse(raw);
+                        if (parsed == null || parsed < 0) {
+                          return 'Enter a valid amount';
+                        }
+                        return null;
+                      },
                     ),
                   ],
                 ),

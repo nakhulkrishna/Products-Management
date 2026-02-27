@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
+import 'package:products_catelogs/core/constants/firestore_collections.dart';
 import 'package:products_catelogs/features/products/data/repositories/products_repository.dart';
 import 'package:products_catelogs/features/products/presentation/widgets/add_edit_product_form_view.dart';
 import 'package:products_catelogs/features/products/presentation/widgets/bulk_upload_products_view.dart';
@@ -16,6 +18,8 @@ enum _StockFilter { all, inStock, lowStock, soldOut }
 enum _VisibilityFilter { all, visibleOnly, hiddenOnly }
 
 enum _PerformanceLevel { excellent, veryGood, good }
+
+enum _ProductAction { view, edit, toggleVisibility, delete }
 
 class _Product {
   final String normalizedCode;
@@ -85,6 +89,7 @@ class ProductsTabPage extends StatefulWidget {
 class _ProductsTabPageState extends State<ProductsTabPage> {
   static const int _rowsPerPage = 13;
   final ProductsRepository _productsRepository = FirestoreProductsRepository();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   final TextEditingController _searchController = TextEditingController();
   final NumberFormat _currency = NumberFormat.currency(
@@ -108,6 +113,9 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
   final List<_Product> _products = [];
   StreamSubscription<List<ProductRecord>>? _productsSub;
   StreamSubscription<List<ProductCategoryRecord>>? _categoriesSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ordersSub;
+  final Map<String, int> _salesByProduct = <String, int>{};
+  final Map<String, double> _soldBaseQtyByProduct = <String, double>{};
 
   @override
   void initState() {
@@ -155,14 +163,63 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
         );
       },
     );
+    _subscribeOrderMetrics();
   }
 
   @override
   void dispose() {
     _productsSub?.cancel();
     _categoriesSub?.cancel();
+    _ordersSub?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _subscribeOrderMetrics() {
+    _ordersSub?.cancel();
+    _ordersSub = _firestore
+        .collection(FirestoreCollections.orders)
+        .snapshots()
+        .listen((snapshot) {
+          final salesCounts = <String, int>{};
+          final soldBase = <String, double>{};
+          for (final doc in snapshot.docs) {
+            final data = doc.data();
+            final status = '${data['orderStatus'] ?? ''}'.toLowerCase();
+            final isCompleted =
+                status == 'delivered' ||
+                status == 'completed' ||
+                status == 'complete';
+            if (!isCompleted) continue;
+            final items = data['items'];
+            if (items is! List) continue;
+            for (final item in items) {
+              if (item is! Map) continue;
+              final map = item.map((k, v) => MapEntry('$k', v));
+              final rawCode = '${map['productCode'] ?? ''}'.trim();
+              if (rawCode.isEmpty) continue;
+              final code = _normalizeProductCode(rawCode);
+              final qtyBase = _doubleOr(map['qtyBase']);
+              final soldQty = _doubleOr(map['qty']);
+              final soldUnits = soldQty > 0 ? soldQty.round() : 1;
+              salesCounts.update(
+                code,
+                (value) => value + soldUnits,
+                ifAbsent: () => soldUnits,
+              );
+              soldBase.update(code, (value) => value + qtyBase, ifAbsent: () => qtyBase);
+            }
+          }
+          if (!mounted) return;
+          setState(() {
+            _salesByProduct
+              ..clear()
+              ..addAll(salesCounts);
+            _soldBaseQtyByProduct
+              ..clear()
+              ..addAll(soldBase);
+          });
+        });
   }
 
   List<_Product> get _filteredProducts {
@@ -279,7 +336,7 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
           stockInBaseUnit: product.stockInBaseUnit,
           priceQar: product.priceQar,
           offerPriceQar: product.offerPriceQar,
-          sales: product.sales,
+          sales: _resolvedSales(product),
           linkedMarketing: product.linkedMarketing,
           stockStatusLabel: stockStyle.$4,
           stockStatusColor: stockStyle.$2,
@@ -601,6 +658,12 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
 
   Widget _buildFilterButton() {
     return PopupMenuButton<String>(
+      color: Colors.white,
+      surfaceTintColor: Colors.white,
+      elevation: 8,
+      shadowColor: const Color(0x1A0F172A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      offset: const Offset(0, 42),
       onSelected: (value) {
         setState(() {
           switch (value) {
@@ -728,7 +791,8 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
             _HeaderCell(width: 120, text: 'Price (QAR)'),
             _HeaderCell(width: 96, text: 'Sales'),
             _HeaderCell(width: 138, text: 'Stock Status'),
-            _HeaderCell(width: 126, text: 'Action'),
+            _HeaderCell(width: 170, text: 'Available Stock'),
+            _HeaderCell(width: 112, text: 'Action'),
           ],
         ),
       ),
@@ -803,14 +867,14 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
             ),
             _RowCell(width: 168, text: product.category),
             _RowCell(width: 158, text: _performanceLabel(product.performance)),
-            _RowCell(width: 120, text: '${product.conversionPercent}%'),
+            _RowCell(width: 120, text: '${_resolvedConversion(product)}%'),
             _RowCell(
               width: 198,
               text: product.linkedMarketing,
               color: const Color(0xFF2488B7),
             ),
             _RowCell(width: 120, text: _currency.format(product.priceQar)),
-            _RowCell(width: 96, text: product.sales.toString()),
+            _RowCell(width: 96, text: _resolvedSales(product).toString()),
             SizedBox(
               width: 138,
               child: Align(
@@ -843,49 +907,12 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
                 ),
               ),
             ),
-            SizedBox(
-              width: 168,
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      setState(() => _selectedProductForDetails = product);
-                    },
-                    icon: const Icon(
-                      Icons.remove_red_eye_outlined,
-                      size: 18,
-                      color: Color(0xFF2277B8),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => _openEditForm(product),
-                    icon: const Icon(
-                      Icons.edit_outlined,
-                      size: 18,
-                      color: Color(0xFF374151),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => _toggleProductVisibility(product),
-                    icon: Icon(
-                      product.isHidden
-                          ? Icons.visibility_rounded
-                          : Icons.visibility_off_rounded,
-                      size: 18,
-                      color: const Color(0xFF374151),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => _confirmDeleteProduct(product),
-                    icon: const Icon(
-                      Icons.delete_outline_rounded,
-                      size: 18,
-                      color: Color(0xFFE65A5A),
-                    ),
-                  ),
-                ],
-              ),
+            _RowCell(
+              width: 170,
+              text:
+                  '${product.stockInBaseUnit.toStringAsFixed(2)} ${product.baseUnit}',
             ),
+            SizedBox(width: 112, child: _buildProductActionMenu(product)),
           ],
         ),
       ),
@@ -994,59 +1021,19 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
               const SizedBox(height: 10),
               _infoRow('Category', product.category),
               _infoRow('Performance', _performanceLabel(product.performance)),
-              _infoRow('Conversion', '${product.conversionPercent}%'),
+              _infoRow('Conversion', '${_resolvedConversion(product)}%'),
               _infoRow('Linked Marketing', product.linkedMarketing),
               _infoRow('Price', _currency.format(product.priceQar)),
-              _infoRow('Sales', product.sales.toString()),
+              _infoRow('Sales', _resolvedSales(product).toString()),
+              _infoRow(
+                'Available Stock',
+                '${product.stockInBaseUnit.toStringAsFixed(2)} ${product.baseUnit}',
+              ),
               _infoRow('Visibility', product.isHidden ? 'Hidden' : 'Visible'),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      setState(() => _selectedProductForDetails = product);
-                    },
-                    icon: const Icon(
-                      Icons.remove_red_eye_outlined,
-                      size: 16,
-                      color: Color(0xFF2277B8),
-                    ),
-                    label: const Text(
-                      'View',
-                      style: TextStyle(color: Color(0xFF2277B8)),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => _openEditForm(product),
-                    icon: const Icon(Icons.edit_outlined, size: 16),
-                    label: const Text('Edit'),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => _toggleProductVisibility(product),
-                    icon: Icon(
-                      product.isHidden
-                          ? Icons.visibility_rounded
-                          : Icons.visibility_off_rounded,
-                      size: 16,
-                    ),
-                    label: Text(product.isHidden ? 'Unhide' : 'Hide'),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => _confirmDeleteProduct(product),
-                    icon: const Icon(
-                      Icons.delete_outline_rounded,
-                      size: 16,
-                      color: Color(0xFFE65A5A),
-                    ),
-                    label: const Text(
-                      'Delete',
-                      style: TextStyle(color: Color(0xFFE65A5A)),
-                    ),
-                  ),
-                ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: _buildProductActionMenu(product),
               ),
             ],
           ),
@@ -1084,6 +1071,95 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildProductActionMenu(_Product product) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: PopupMenuButton<_ProductAction>(
+        tooltip: 'Product options',
+        color: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 8,
+        shadowColor: const Color(0x1A0F172A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        offset: const Offset(0, 42),
+        icon: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFDDE2EA)),
+          ),
+          child: const Icon(Iconsax.setting, size: 18, color: Color(0xFF4B5563)),
+        ),
+        onSelected: (action) => _handleProductAction(product, action),
+        itemBuilder: (context) => [
+          const PopupMenuItem<_ProductAction>(
+            value: _ProductAction.view,
+            child: Row(
+              children: [
+                Icon(Iconsax.monitor, size: 18, color: Color(0xFF2277B8)),
+                SizedBox(width: 10),
+                Text('View'),
+              ],
+            ),
+          ),
+          const PopupMenuItem<_ProductAction>(
+            value: _ProductAction.edit,
+            child: Row(
+              children: [
+                Icon(Iconsax.setting, size: 18, color: Color(0xFF374151)),
+                SizedBox(width: 10),
+                Text('Edit'),
+              ],
+            ),
+          ),
+          PopupMenuItem<_ProductAction>(
+            value: _ProductAction.toggleVisibility,
+            child: Row(
+              children: [
+                Icon(
+                  product.isHidden ? Iconsax.eye : Iconsax.eye_slash,
+                  size: 18,
+                  color: const Color(0xFF4B5563),
+                ),
+                const SizedBox(width: 10),
+                Text(product.isHidden ? 'Unhide' : 'Hide'),
+              ],
+            ),
+          ),
+          const PopupMenuItem<_ProductAction>(
+            value: _ProductAction.delete,
+            child: Row(
+              children: [
+                Icon(Iconsax.trash, size: 18, color: Color(0xFFE65A5A)),
+                SizedBox(width: 10),
+                Text('Delete'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleProductAction(_Product product, _ProductAction action) {
+    switch (action) {
+      case _ProductAction.view:
+        setState(() => _selectedProductForDetails = product);
+        break;
+      case _ProductAction.edit:
+        _openEditForm(product);
+        break;
+      case _ProductAction.toggleVisibility:
+        _toggleProductVisibility(product);
+        break;
+      case _ProductAction.delete:
+        _confirmDeleteProduct(product);
+        break;
+    }
   }
 
   Widget _buildPaginationFooter({required int totalItems}) {
@@ -1289,24 +1365,10 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
   }
 
   Future<void> _confirmDeleteProduct(_Product product) async {
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Delete Product'),
-          content: Text('Delete "${product.name}" permanently?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Delete'),
-            ),
-          ],
-        );
-      },
+    final shouldDelete = await _showConfirmSideSheet(
+      title: 'Delete Product',
+      message: 'Delete "${product.name}" permanently?',
+      confirmLabel: 'Delete',
     );
     if (shouldDelete != true) return;
 
@@ -1408,6 +1470,133 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
       initialStockInputUnit: product.initialStockInputUnit ?? product.baseUnit,
       imageUrls: product.imageUrls,
     );
+  }
+
+  Future<bool?> _showConfirmSideSheet({
+    required String title,
+    required String message,
+    required String confirmLabel,
+  }) {
+    return showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: title,
+      barrierColor: const Color(0x400F172A),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, _, __) {
+        final width = MediaQuery.of(context).size.width;
+        final sheetWidth = width > 1080 ? 460.0 : (width > 720 ? 420.0 : width);
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.white,
+            child: SafeArea(
+              child: SizedBox(
+                width: sheetWidth,
+                height: double.infinity,
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: const TextStyle(
+                                color: Color(0xFF111827),
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            icon: const Icon(Iconsax.close_circle, size: 20),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Text(
+                          message,
+                          style: const TextStyle(
+                            color: Color(0xFF111827),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: const Text('Cancel'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: Text(confirmLabel),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, _, child) {
+        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
+  }
+
+  int _resolvedSales(_Product product) {
+    final live = _salesByProduct[product.normalizedCode] ?? 0;
+    return live > 0 ? live : product.sales;
+  }
+
+  int _resolvedConversion(_Product product) {
+    final soldBase = _soldBaseQtyByProduct[product.normalizedCode] ?? 0;
+    final denominator = soldBase + product.stockInBaseUnit;
+    if (denominator <= 0) return product.conversionPercent;
+    final livePercent = ((soldBase / denominator) * 100).round();
+    return livePercent > product.conversionPercent
+        ? livePercent
+        : product.conversionPercent;
+  }
+
+  String _normalizeProductCode(String code) {
+    return code.replaceAll('#', '').trim().toLowerCase();
+  }
+
+  double _doubleOr(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value.trim()) ?? 0;
+    return 0;
   }
 }
 

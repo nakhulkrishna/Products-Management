@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/core/constants/app_strings.dart';
 
-enum SidebarTab { dashboard, products, orders, staffs, settings }
+enum SidebarTab { dashboard, products, orders, customers, staffs, settings }
 
 extension SidebarTabX on SidebarTab {
   String get label {
@@ -13,7 +13,9 @@ extension SidebarTabX on SidebarTab {
         return AppStrings.productsTitle;
       case SidebarTab.orders:
         return AppStrings.ordersTitle;
-         case SidebarTab.staffs:
+      case SidebarTab.customers:
+        return AppStrings.customersTitle;
+      case SidebarTab.staffs:
         return AppStrings.staffsTitle;
       case SidebarTab.settings:
         return AppStrings.settingsTitle;
@@ -28,7 +30,9 @@ extension SidebarTabX on SidebarTab {
         return Iconsax.box;
       case SidebarTab.orders:
         return Iconsax.bill;
-        case SidebarTab.staffs:
+      case SidebarTab.customers:
+        return Iconsax.profile_2user;
+      case SidebarTab.staffs:
         return Iconsax.user;
       case SidebarTab.settings:
         return Iconsax.setting;

@@ -1,5 +1,6 @@
 class FirestoreCollections {
   static const users = 'catalog_users';
+  static const customers = 'catalog_customers';
   static const staffSalesmen = 'catalog_staff_salesmen';
   static const orders = 'catalog_orders';
   static const products = 'catalog_products';

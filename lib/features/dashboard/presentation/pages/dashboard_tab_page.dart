@@ -75,6 +75,12 @@ class _TrendAggregate {
   int growthCount = 0;
 }
 
+class _SalesmanOrderAggregate {
+  int deals = 0;
+  double totalSales = 0;
+  DateTime? lastSaleDate;
+}
+
 class DashboardTabPage extends StatefulWidget {
   const DashboardTabPage({super.key});
 
@@ -286,20 +292,20 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _filteredSalesmen;
+    final filtered = _salesmenWithLiveOrderMetrics(_filteredSalesmen);
     final trendingProducts = _trendingProductsFromOrders;
     final selectedCount = filtered
         .where((salesman) => _selectedIds.contains(salesman.id))
         .length;
     final isAllSelected =
         filtered.isNotEmpty && selectedCount == filtered.length;
-    final totalSales = _orders.fold<double>(
-      0,
-      (runningTotal, order) => runningTotal + _doubleOr(order['amountQar']),
-    );
-    final totalDeals = _orders.where((order) {
-      return _orderStatusString(order) == 'delivered';
-    }).length;
+    final totalSales = _orders
+        .where(_isCompletedOrder)
+        .fold<double>(
+          0,
+          (runningTotal, order) => runningTotal + _doubleOr(order['amountQar']),
+        );
+    final totalDeals = _orders.where(_isCompletedOrder).length;
     final activeSalesmen = _salesmen
         .where((salesman) => salesman.status == _SalesStatus.active)
         .length;
@@ -500,6 +506,7 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
     final aggregates = <String, _TrendAggregate>{};
 
     for (final order in _orders) {
+      if (!_isCompletedOrder(order)) continue;
       final amount = _doubleOr(order['amountQar']);
       final rawItems = order['items'];
       if (rawItems is List && rawItems.isNotEmpty) {
@@ -590,6 +597,61 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
     return _stringOr(order['orderStatus'], fallback: 'processing').toLowerCase();
   }
 
+  bool _isCompletedOrder(Map<String, dynamic> order) {
+    final status = _orderStatusString(order);
+    return status == 'delivered' || status == 'completed' || status == 'complete';
+  }
+
+  List<_Salesman> _salesmenWithLiveOrderMetrics(List<_Salesman> source) {
+    final aggregates = <String, _SalesmanOrderAggregate>{};
+    for (final order in _orders) {
+      if (!_isCompletedOrder(order)) continue;
+      final salesmanName = _stringOr(order['salesmanName']);
+      if (salesmanName.isEmpty) continue;
+      final key = salesmanName.toLowerCase().trim();
+      final entry = aggregates.putIfAbsent(key, () => _SalesmanOrderAggregate());
+      entry.deals += 1;
+      entry.totalSales += _doubleOr(order['amountQar']);
+      final orderDate = _dateOrNull(order['orderDate']) ?? _dateOrNull(order['createdAt']);
+      if (orderDate != null &&
+          (entry.lastSaleDate == null || orderDate.isAfter(entry.lastSaleDate!))) {
+        entry.lastSaleDate = orderDate;
+      }
+    }
+
+    final hasSingleSalesmanFallback = source.length == 1 && aggregates.isNotEmpty;
+    final fallbackDeals = aggregates.values.fold<int>(0, (a, b) => a + b.deals);
+    final fallbackSales = aggregates.values.fold<double>(
+      0,
+      (a, b) => a + b.totalSales,
+    );
+    DateTime? fallbackLastSale;
+    for (final value in aggregates.values) {
+      final candidate = value.lastSaleDate;
+      if (candidate == null) continue;
+      if (fallbackLastSale == null || candidate.isAfter(fallbackLastSale)) {
+        fallbackLastSale = candidate;
+      }
+    }
+
+    return source.map((salesman) {
+      final entry = aggregates[salesman.name.toLowerCase().trim()];
+      if (entry == null && hasSingleSalesmanFallback) {
+        return salesman.copyWith(
+          dealsClosed: fallbackDeals > 0 ? fallbackDeals : salesman.dealsClosed,
+          totalSales: fallbackSales > 0 ? fallbackSales : salesman.totalSales,
+          lastSaleDate: fallbackLastSale ?? salesman.lastSaleDate,
+        );
+      }
+      if (entry == null) return salesman;
+      return salesman.copyWith(
+        dealsClosed: entry.deals > 0 ? entry.deals : salesman.dealsClosed,
+        totalSales: entry.totalSales > 0 ? entry.totalSales : salesman.totalSales,
+        lastSaleDate: entry.lastSaleDate ?? salesman.lastSaleDate,
+      );
+    }).toList();
+  }
+
   String _stringOr(dynamic value, {String fallback = ''}) {
     if (value is String && value.trim().isNotEmpty) return value.trim();
     return fallback;
@@ -615,6 +677,13 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
       if (parsed != null) return parsed;
     }
     return DateTime.now();
+  }
+
+  DateTime? _dateOrNull(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 
   Widget _buildInsightBanner({
@@ -983,6 +1052,12 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
       onSelected: (value) {
         setState(() => _statusFilter = value);
       },
+      color: Colors.white,
+      surfaceTintColor: Colors.white,
+      elevation: 8,
+      shadowColor: const Color(0x1A0F172A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      offset: const Offset(0, 42),
       itemBuilder: (context) => const [
         PopupMenuItem(value: _StatusFilter.all, child: Text('All Statuses')),
         PopupMenuItem(value: _StatusFilter.active, child: Text('Active')),
@@ -1338,11 +1413,29 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
             _RowCell(width: 140, text: salesman.dealsClosed.toString()),
             _RowCell(width: 144, text: _currency.format(salesman.totalSales)),
             SizedBox(
-              width: 40,
+              width: 48,
               child: PopupMenuButton<String>(
-                icon: const Icon(
-                  Icons.more_horiz_rounded,
-                  color: Color(0xFF7A8190),
+                color: Colors.white,
+                surfaceTintColor: Colors.white,
+                elevation: 8,
+                shadowColor: const Color(0x1A0F172A),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                offset: const Offset(0, 42),
+                icon: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFDDE2EA)),
+                  ),
+                  child: const Icon(
+                    Iconsax.setting,
+                    size: 18,
+                    color: Color(0xFF4B5563),
+                  ),
                 ),
                 onSelected: (value) {
                   switch (value) {
@@ -1358,12 +1451,40 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
                   }
                 },
                 itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(Iconsax.setting, size: 18, color: Color(0xFF374151)),
+                        SizedBox(width: 10),
+                        Text('Edit'),
+                      ],
+                    ),
+                  ),
                   PopupMenuItem(
                     value: 'toggle',
-                    child: Text(isActive ? 'Deactivate' : 'Activate'),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isActive ? Iconsax.user_minus : Iconsax.user_add,
+                          size: 18,
+                          color: const Color(0xFF2EA8A5),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(isActive ? 'Deactivate' : 'Activate'),
+                      ],
+                    ),
                   ),
-                  const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Iconsax.trash, size: 18, color: Color(0xFFE65A5A)),
+                        SizedBox(width: 10),
+                        Text('Delete'),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),

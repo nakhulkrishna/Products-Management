@@ -6,13 +6,14 @@ import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import 'package:products_catelogs/core/constants/firestore_collections.dart';
-import 'package:products_catelogs/core/utils/external_url.dart';
 
 enum _OrderStatus { delivered, processing, cancelled }
 
-enum _PaymentStatus { paid, pending, failed }
+enum _PaymentStatus { paid, pending, partial, failed }
 
 enum _OrderFilter { all, delivered, processing, cancelled }
+
+enum _OrderAction { updatePaid, updateStatus, view, delete }
 
 class _Order {
   final String docId;
@@ -23,6 +24,8 @@ class _Order {
   final int itemsCount;
   final String channel;
   final double amountQar;
+  final double collectedAmountQar;
+  final String paymentMethod;
   final _PaymentStatus paymentStatus;
   final _OrderStatus orderStatus;
 
@@ -35,8 +38,92 @@ class _Order {
     required this.itemsCount,
     required this.channel,
     required this.amountQar,
+    this.collectedAmountQar = 0,
+    this.paymentMethod = 'Not set',
     required this.paymentStatus,
     required this.orderStatus,
+  });
+}
+
+class _CustomerRecord {
+  final String id;
+  final String name;
+
+  const _CustomerRecord({required this.id, required this.name});
+}
+
+class _ProductRecordLite {
+  final String code;
+  final String name;
+  final double availableQtyBaseUnit;
+  final String baseUnit;
+  final List<_SaleUnitLite> saleUnits;
+  final Map<String, _PriceForUnit> priceByUnitKey;
+
+  const _ProductRecordLite({
+    required this.code,
+    required this.name,
+    required this.availableQtyBaseUnit,
+    required this.baseUnit,
+    required this.saleUnits,
+    required this.priceByUnitKey,
+  });
+}
+
+class _SaleUnitLite {
+  final String name;
+  final double conversionToBaseUnit;
+
+  const _SaleUnitLite({required this.name, required this.conversionToBaseUnit});
+}
+
+class _PriceForUnit {
+  final double? autoPriceQar;
+  final double? autoOfferPriceQar;
+  final double? manualPriceQar;
+  final double? manualOfferPriceQar;
+
+  const _PriceForUnit({
+    required this.autoPriceQar,
+    required this.autoOfferPriceQar,
+    required this.manualPriceQar,
+    required this.manualOfferPriceQar,
+  });
+
+  double resolvedPrice() {
+    return manualOfferPriceQar ??
+        autoOfferPriceQar ??
+        manualPriceQar ??
+        autoPriceQar ??
+        0;
+  }
+}
+
+class _OrderLineInput {
+  _ProductRecordLite product;
+  String unitName;
+  double quantity;
+
+  _OrderLineInput({
+    required this.product,
+    required this.unitName,
+    this.quantity = 1,
+  });
+}
+
+class _OrderDraftResult {
+  final _CustomerRecord customer;
+  final String channel;
+  final String paymentMethod;
+  final double collectedAmountQar;
+  final List<_OrderLineInput> lines;
+
+  const _OrderDraftResult({
+    required this.customer,
+    required this.channel,
+    required this.paymentMethod,
+    required this.collectedAmountQar,
+    required this.lines,
   });
 }
 
@@ -67,7 +154,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
   String? _loadError;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ordersSub;
   final Set<String> _selectedIds = <String>{};
-  String? _whatsAppOrderNumber;
+  bool _creatingOrder = false;
 
   static final List<_Order> _orders = [
     _Order(
@@ -219,7 +306,6 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
   void initState() {
     super.initState();
     _orders.clear();
-    _loadWhatsAppOrderNumber();
     _subscribeOrders();
   }
 
@@ -270,22 +356,6 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
             });
           },
         );
-  }
-
-  Future<void> _loadWhatsAppOrderNumber() async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-    try {
-      final doc = await _firestore
-          .collection(FirestoreCollections.users)
-          .doc(user.uid)
-          .get();
-      if (!mounted) return;
-      final number = doc.data()?['whatsappOrderNumber'];
-      if (number is String && number.trim().isNotEmpty) {
-        setState(() => _whatsAppOrderNumber = number.trim());
-      }
-    } catch (_) {}
   }
 
   List<_Order> get _filteredOrders {
@@ -514,7 +584,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
         ),
         if (!compact)
           _headerActionButton(
-            onTap: () {},
+            onTap: _creatingOrder ? () {} : _addOrder,
             icon: Icons.add_rounded,
             label: 'Add Order',
             highlighted: true,
@@ -590,6 +660,12 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
 
   Widget _buildFilterButton() {
     return PopupMenuButton<_OrderFilter>(
+      color: Colors.white,
+      surfaceTintColor: Colors.white,
+      elevation: 8,
+      shadowColor: const Color(0x1A0F172A),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      offset: const Offset(0, 42),
       onSelected: (value) {
         setState(() {
           _statusFilter = value;
@@ -598,7 +674,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
       },
       itemBuilder: (context) => const [
         PopupMenuItem(value: _OrderFilter.all, child: Text('All Statuses')),
-        PopupMenuItem(value: _OrderFilter.delivered, child: Text('Delivered')),
+        PopupMenuItem(value: _OrderFilter.delivered, child: Text('Completed')),
         PopupMenuItem(
           value: _OrderFilter.processing,
           child: Text('Processing'),
@@ -620,7 +696,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
             const SizedBox(width: 8),
             Text(switch (_statusFilter) {
               _OrderFilter.all => 'All',
-              _OrderFilter.delivered => 'Delivered',
+              _OrderFilter.delivered => 'Completed',
               _OrderFilter.processing => 'Processing',
               _OrderFilter.cancelled => 'Cancelled',
             }),
@@ -675,7 +751,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
             _HeaderCell(width: 128, text: 'Amount (QAR)'),
             _HeaderCell(width: 138, text: 'Payment'),
             _HeaderCell(width: 140, text: 'Order Status'),
-            _HeaderCell(width: 170, text: 'Action'),
+            _HeaderCell(width: 110, text: 'Action'),
           ],
         ),
       ),
@@ -778,38 +854,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                 borderColor: orderStyle.$3,
               ),
             ),
-            SizedBox(
-              width: 170,
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => _sendBillToWhatsApp(order),
-                    icon: const Icon(
-                      Iconsax.message,
-                      size: 18,
-                      color: Color(0xFF2EA8A5),
-                    ),
-                    tooltip: 'Send bill',
-                  ),
-                  IconButton(
-                    onPressed: () {},
-                    icon: const Icon(
-                      Icons.edit_outlined,
-                      size: 18,
-                      color: Color(0xFF374151),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => _deleteOrder(order),
-                    icon: const Icon(
-                      Icons.delete_outline_rounded,
-                      size: 18,
-                      color: Color(0xFFE65A5A),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            SizedBox(width: 110, child: _buildOrderActionMenu(order)),
           ],
         ),
       ),
@@ -916,6 +961,8 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
               _infoRow('Items', order.itemsCount.toString()),
               _infoRow('Channel', order.channel),
               _infoRow('Amount', _currency.format(order.amountQar)),
+              _infoRow('Payment Method', order.paymentMethod),
+              _infoRow('Collected', _currency.format(order.collectedAmountQar)),
               const SizedBox(height: 4),
               Wrap(
                 spacing: 8,
@@ -936,40 +983,9 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                 ],
               ),
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => _sendBillToWhatsApp(order),
-                    icon: const Icon(
-                      Iconsax.message,
-                      size: 16,
-                      color: Color(0xFF2EA8A5),
-                    ),
-                    label: const Text(
-                      'Send Bill',
-                      style: TextStyle(color: Color(0xFF2EA8A5)),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.edit_outlined, size: 16),
-                    label: const Text('Edit'),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => _deleteOrder(order),
-                    icon: const Icon(
-                      Icons.delete_outline_rounded,
-                      size: 16,
-                      color: Color(0xFFE65A5A),
-                    ),
-                    label: const Text(
-                      'Delete',
-                      style: TextStyle(color: Color(0xFFE65A5A)),
-                    ),
-                  ),
-                ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: _buildOrderActionMenu(order),
               ),
             ],
           ),
@@ -1002,6 +1018,75 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrderActionMenu(_Order order) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: PopupMenuButton<_OrderAction>(
+        tooltip: 'Order options',
+        color: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 8,
+        shadowColor: const Color(0x1A0F172A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        offset: const Offset(0, 42),
+        icon: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFDDE2EA)),
+          ),
+          child: const Icon(Iconsax.setting, size: 18, color: Color(0xFF4B5563)),
+        ),
+        onSelected: (action) => _handleOrderAction(order, action),
+        itemBuilder: (context) => [
+          PopupMenuItem<_OrderAction>(
+            value: _OrderAction.updatePaid,
+            enabled: order.paymentStatus != _PaymentStatus.paid,
+            child: const Row(
+              children: [
+                Icon(Iconsax.money, size: 18, color: Color(0xFF2277B8)),
+                SizedBox(width: 10),
+                Text('Update Paid'),
+              ],
+            ),
+          ),
+          const PopupMenuItem<_OrderAction>(
+            value: _OrderAction.updateStatus,
+            child: Row(
+              children: [
+                Icon(Iconsax.bill, size: 18, color: Color(0xFF2E9F95)),
+                SizedBox(width: 10),
+                Text('Update Status'),
+              ],
+            ),
+          ),
+          PopupMenuItem<_OrderAction>(
+            value: _OrderAction.view,
+            child: const Row(
+              children: [
+                Icon(Iconsax.monitor, size: 18, color: Color(0xFF2EA8A5)),
+                SizedBox(width: 10),
+                Text('View Details'),
+              ],
+            ),
+          ),
+          const PopupMenuItem<_OrderAction>(
+            value: _OrderAction.delete,
+            child: Row(
+              children: [
+                Icon(Iconsax.trash, size: 18, color: Color(0xFFE65A5A)),
+                SizedBox(width: 10),
+                Text('Delete'),
+              ],
             ),
           ),
         ],
@@ -1110,6 +1195,691 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
     );
   }
 
+  Future<void> _addOrder() async {
+    if (_creatingOrder) return;
+    setState(() => _creatingOrder = true);
+    try {
+      final customers = await _loadCustomers();
+      if (customers.isEmpty) {
+        _toast('No active customers found. Add customers first.');
+        return;
+      }
+      final products = await _loadProducts();
+      if (products.isEmpty) {
+        _toast('No active products found. Add products first.');
+        return;
+      }
+      if (!mounted) return;
+      final draft = await _showCreateOrderSheet(
+        customers: customers,
+        products: products,
+      );
+      if (draft == null) return;
+      await _createOrderWithStockDeduction(draft);
+    } catch (error) {
+      _toast('Failed to prepare order: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _creatingOrder = false);
+      }
+    }
+  }
+
+  Future<List<_CustomerRecord>> _loadCustomers() async {
+    final snapshot = await _firestore
+        .collection(FirestoreCollections.customers)
+        .where('status', isEqualTo: 'active')
+        .orderBy('nameLower')
+        .get();
+    return snapshot.docs.map((doc) {
+      final data = doc.data();
+      return _CustomerRecord(
+        id: _stringOr(data['id'], fallback: doc.id),
+        name: _stringOr(data['name'], fallback: 'Unknown'),
+      );
+    }).toList();
+  }
+
+  Future<List<_ProductRecordLite>> _loadProducts() async {
+    final snapshot = await _firestore
+        .collection(FirestoreCollections.products)
+        .where('status', isEqualTo: 'active')
+        .orderBy('productNameLower')
+        .get();
+
+    return snapshot.docs
+        .map(_productFromDoc)
+        .whereType<_ProductRecordLite>()
+        .toList();
+  }
+
+  _ProductRecordLite? _productFromDoc(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    if (data == null) return null;
+    final code = _stringOr(data['productCode'], fallback: doc.id);
+    final name = _stringOr(data['productName'], fallback: 'Unnamed Product');
+    final inventory = _asMap(data['inventory']);
+    final baseUnitMap = _asMap(data['baseUnit']);
+    final saleUnitsRaw = data['saleUnits'];
+    final saleUnits = <_SaleUnitLite>[];
+    if (saleUnitsRaw is List) {
+      for (final item in saleUnitsRaw) {
+        final itemMap = _asMap(item);
+        final unitName = _stringOr(itemMap['name']);
+        if (unitName.isEmpty) continue;
+        saleUnits.add(
+          _SaleUnitLite(
+            name: unitName,
+            conversionToBaseUnit: _doubleOr(itemMap['conversionToBaseUnit']),
+          ),
+        );
+      }
+    }
+    final baseUnit = _stringOr(baseUnitMap['name'], fallback: 'Piece');
+    if (saleUnits.isEmpty) {
+      saleUnits.add(_SaleUnitLite(name: baseUnit, conversionToBaseUnit: 1));
+    }
+
+    final pricing = _asMap(data['pricing']);
+    final markets = _asMap(pricing['markets']);
+    final defaultMarketKey = _stringOr(
+      pricing['defaultMarketKey'],
+      fallback: markets.keys.isEmpty ? '' : markets.keys.first,
+    );
+    final market = _asMap(markets[defaultMarketKey]);
+    final pricesMap = _asMap(market['prices']);
+    final priceByUnitKey = <String, _PriceForUnit>{};
+    pricesMap.forEach((key, value) {
+      final item = _asMap(value);
+      priceByUnitKey[key.toString().toLowerCase()] = _PriceForUnit(
+        autoPriceQar: _nullableDouble(item['autoPriceQar']),
+        autoOfferPriceQar: _nullableDouble(item['autoOfferPriceQar']),
+        manualPriceQar: _nullableDouble(item['manualPriceQar']),
+        manualOfferPriceQar: _nullableDouble(item['manualOfferPriceQar']),
+      );
+    });
+
+    return _ProductRecordLite(
+      code: code,
+      name: name,
+      availableQtyBaseUnit: _doubleOr(inventory['availableQtyBaseUnit']),
+      baseUnit: baseUnit,
+      saleUnits: saleUnits,
+      priceByUnitKey: priceByUnitKey,
+    );
+  }
+
+  Future<_OrderDraftResult?> _showCreateOrderSheet({
+    required List<_CustomerRecord> customers,
+    required List<_ProductRecordLite> products,
+  }) {
+    var selectedCustomer = customers.first;
+    var channel = 'Salesman App';
+    var paymentMethod = 'Credit';
+    var collectedAmount = 0.0;
+    final lines = <_OrderLineInput>[
+      _OrderLineInput(
+        product: products.first,
+        unitName: products.first.saleUnits.first.name,
+        quantity: 1,
+      ),
+    ];
+    String? errorText;
+
+    double linePrice(_OrderLineInput line) {
+      final key = _normalizeKey(line.unitName);
+      final config = line.product.priceByUnitKey[key];
+      return config?.resolvedPrice() ?? 0;
+    }
+
+    double lineBaseQty(_OrderLineInput line) {
+      final unit = line.product.saleUnits.firstWhere(
+        (e) => e.name == line.unitName,
+        orElse: () =>
+            _SaleUnitLite(name: line.product.baseUnit, conversionToBaseUnit: 1),
+      );
+      return line.quantity * unit.conversionToBaseUnit;
+    }
+
+    return showGeneralDialog<_OrderDraftResult>(
+      context: context,
+      barrierLabel: 'create-order',
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.3),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, _, __) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final total = lines.fold<double>(
+              0,
+              (acc, line) => acc + (linePrice(line) * line.quantity),
+            );
+            final double effectiveCollected = collectedAmount < 0
+                ? 0.0
+                : (collectedAmount > total ? total : collectedAmount);
+            final paymentStatus = _paymentStatusForAmount(
+              totalQar: total,
+              collectedQar: effectiveCollected,
+            );
+            return Align(
+              alignment: Alignment.centerRight,
+              child: Material(
+                color: Colors.white,
+                child: SizedBox(
+                  width: 560,
+                  height: double.infinity,
+                  child: SafeArea(
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 18, 14, 10),
+                          child: Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Create Order',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF111827),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                icon: const Icon(Icons.close_rounded),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                DropdownButtonFormField<_CustomerRecord>(
+                                  initialValue: selectedCustomer,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Customer',
+                                  ),
+                                  onChanged: (value) {
+                                    if (value == null) return;
+                                    setSheetState(
+                                      () => selectedCustomer = value,
+                                    );
+                                  },
+                                  items: customers
+                                      .map(
+                                        (customer) => DropdownMenuItem(
+                                          value: customer,
+                                          child: Text(
+                                            '${customer.name} (${customer.id})',
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  initialValue: channel,
+                                  onChanged: (value) => channel = value.trim(),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Channel',
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                DropdownButtonFormField<String>(
+                                  initialValue: paymentMethod,
+                                  onChanged: (value) {
+                                    if (value == null) return;
+                                    setSheetState(() => paymentMethod = value);
+                                  },
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: 'Cash',
+                                      child: Text('Cash'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'Card',
+                                      child: Text('Card'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'Bank Transfer',
+                                      child: Text('Bank Transfer'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'Credit',
+                                      child: Text('Credit'),
+                                    ),
+                                  ],
+                                  decoration: const InputDecoration(
+                                    labelText: 'Payment Method',
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  initialValue: collectedAmount.toStringAsFixed(
+                                    0,
+                                  ),
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  onChanged: (value) {
+                                    final parsed = double.tryParse(value);
+                                    if (parsed == null) return;
+                                    setSheetState(
+                                      () => collectedAmount = parsed,
+                                    );
+                                  },
+                                  decoration: const InputDecoration(
+                                    labelText: 'Collected Amount (QAR)',
+                                    hintText: '0',
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'Order Items',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF111827),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                for (int i = 0; i < lines.length; i++) ...[
+                                  _buildOrderLineEditor(
+                                    line: lines[i],
+                                    products: products,
+                                    onChanged: () => setSheetState(() {}),
+                                    onRemove: lines.length == 1
+                                        ? null
+                                        : () => setSheetState(
+                                            () => lines.removeAt(i),
+                                          ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                ],
+                                OutlinedButton.icon(
+                                  onPressed: () {
+                                    setSheetState(() {
+                                      final product = products.first;
+                                      lines.add(
+                                        _OrderLineInput(
+                                          product: product,
+                                          unitName:
+                                              product.saleUnits.first.name,
+                                          quantity: 1,
+                                        ),
+                                      );
+                                    });
+                                  },
+                                  icon: const Icon(Icons.add_rounded),
+                                  label: const Text('Add Product'),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  'Total: ${_currency.format(total)}',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF111827),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Payment Status: ${_paymentStyle(paymentStatus).$4} | Collected: ${_currency.format(effectiveCollected)}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: _paymentStyle(paymentStatus).$2,
+                                  ),
+                                ),
+                                if (errorText != null) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    errorText!,
+                                    style: const TextStyle(
+                                      color: Color(0xFFB42318),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  child: const Text('Cancel'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed: () {
+                                    if (lines.isEmpty) {
+                                      setSheetState(() {
+                                        errorText = 'Add at least one product.';
+                                      });
+                                      return;
+                                    }
+                                    for (final line in lines) {
+                                      if (line.quantity <= 0) {
+                                        setSheetState(() {
+                                          errorText =
+                                              'Quantity must be greater than zero.';
+                                        });
+                                        return;
+                                      }
+                                      if (lineBaseQty(line) >
+                                          line.product.availableQtyBaseUnit) {
+                                        setSheetState(() {
+                                          errorText =
+                                              'Insufficient stock for ${line.product.name}.';
+                                        });
+                                        return;
+                                      }
+                                    }
+                                    Navigator.of(context).pop(
+                                      _OrderDraftResult(
+                                        customer: selectedCustomer,
+                                        channel: channel.isEmpty
+                                            ? 'Salesman App'
+                                            : channel,
+                                        paymentMethod: paymentMethod,
+                                        collectedAmountQar: effectiveCollected,
+                                        lines: lines
+                                            .map(
+                                              (line) => _OrderLineInput(
+                                                product: line.product,
+                                                unitName: line.unitName,
+                                                quantity: line.quantity,
+                                              ),
+                                            )
+                                            .toList(),
+                                      ),
+                                    );
+                                  },
+                                  child: const Text('Place Order'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+      transitionBuilder: (context, animation, _, child) {
+        final offset = Tween<Offset>(
+          begin: const Offset(1, 0),
+          end: Offset.zero,
+        ).animate(animation);
+        return SlideTransition(position: offset, child: child);
+      },
+    );
+  }
+
+  Widget _buildOrderLineEditor({
+    required _OrderLineInput line,
+    required List<_ProductRecordLite> products,
+    required VoidCallback onChanged,
+    required VoidCallback? onRemove,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFE4E9F0)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                flex: 5,
+                child: DropdownButtonFormField<_ProductRecordLite>(
+                  key: ValueKey(
+                    'product-${line.hashCode}-${line.product.code}',
+                  ),
+                  initialValue: line.product,
+                  decoration: const InputDecoration(labelText: 'Product'),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    line.product = value;
+                    line.unitName = value.saleUnits.first.name;
+                    line.quantity = 1;
+                    onChanged();
+                  },
+                  items: products
+                      .map(
+                        (product) => DropdownMenuItem(
+                          value: product,
+                          child: Text(
+                            '${product.name} (${product.code}) • ${product.availableQtyBaseUnit.toStringAsFixed(2)} ${product.baseUnit}',
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 3,
+                child: DropdownButtonFormField<String>(
+                  key: ValueKey(
+                    'unit-${line.hashCode}-${line.product.code}-${line.unitName}',
+                  ),
+                  initialValue: line.unitName,
+                  decoration: const InputDecoration(labelText: 'Unit'),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    line.unitName = value;
+                    onChanged();
+                  },
+                  items: line.product.saleUnits
+                      .map(
+                        (unit) => DropdownMenuItem(
+                          value: unit.name,
+                          child: Text(unit.name),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: TextFormField(
+                  key: ValueKey(
+                    'qty-${line.hashCode}-${line.product.code}-${line.unitName}-${line.quantity}',
+                  ),
+                  initialValue: line.quantity == line.quantity.toInt()
+                      ? line.quantity.toInt().toString()
+                      : line.quantity.toString(),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: 'Qty'),
+                  onChanged: (value) {
+                    final parsed = double.tryParse(value);
+                    if (parsed == null) return;
+                    line.quantity = parsed;
+                    onChanged();
+                  },
+                ),
+              ),
+              if (onRemove != null) ...[
+                const SizedBox(width: 6),
+                IconButton(
+                  onPressed: onRemove,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Available: ${line.product.availableQtyBaseUnit.toStringAsFixed(2)} ${line.product.baseUnit}',
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _createOrderWithStockDeduction(_OrderDraftResult draft) async {
+    try {
+      final ordersRef = _firestore.collection(FirestoreCollections.orders);
+      final orderDoc = ordersRef.doc();
+      final orderCode =
+          'ORD-${DateFormat('yyyyMMdd').format(DateTime.now())}-${orderDoc.id.substring(0, 4).toUpperCase()}';
+      await _firestore.runTransaction((transaction) async {
+        double total = 0;
+        int itemsCount = 0;
+        final items = <Map<String, dynamic>>[];
+
+        for (final line in draft.lines) {
+          final productDocRef = _firestore
+              .collection(FirestoreCollections.products)
+              .doc(_normalizeProductDocId(line.product.code));
+          final snap = await transaction.get(productDocRef);
+          final data = snap.data();
+          if (!snap.exists || data == null) {
+            throw StateError('Product ${line.product.code} no longer exists.');
+          }
+
+          final inventory = _asMap(data['inventory']);
+          final currentAvailable = _doubleOr(inventory['availableQtyBaseUnit']);
+          final unit = line.product.saleUnits.firstWhere(
+            (e) => e.name == line.unitName,
+            orElse: () => _SaleUnitLite(
+              name: line.product.baseUnit,
+              conversionToBaseUnit: 1,
+            ),
+          );
+          final requestedBase = line.quantity * unit.conversionToBaseUnit;
+          if (requestedBase <= 0) {
+            throw StateError('Invalid quantity for ${line.product.name}.');
+          }
+          if (currentAvailable < requestedBase) {
+            throw StateError(
+              'Insufficient stock for ${line.product.name}. Available: ${currentAvailable.toStringAsFixed(2)} ${line.product.baseUnit}',
+            );
+          }
+          final key = _normalizeKey(line.unitName);
+          final linePrice =
+              line.product.priceByUnitKey[key]?.resolvedPrice() ?? 0;
+          final price = linePrice > 0
+              ? linePrice
+              : _doubleOr(_asMap(data['metrics'])['displayPriceQar']);
+
+          final lineTotal = line.quantity * price;
+          total += lineTotal;
+          itemsCount += 1;
+          items.add({
+            'productCode': line.product.code,
+            'productName': line.product.name,
+            'unit': line.unitName,
+            'qty': line.quantity,
+            'conversionToBaseUnit': unit.conversionToBaseUnit,
+            'qtyBase': requestedBase,
+            'appliedPriceQar': price,
+            'lineTotalQar': lineTotal,
+          });
+
+          transaction.set(productDocRef, {
+            'inventory': {
+              'availableQtyBaseUnit': currentAvailable - requestedBase,
+            },
+            'audit': {'updatedAt': FieldValue.serverTimestamp()},
+          }, SetOptions(merge: true));
+        }
+
+        final double collected = draft.collectedAmountQar < 0
+            ? 0.0
+            : (draft.collectedAmountQar > total
+                  ? total
+                  : draft.collectedAmountQar);
+        final paymentStatus = _paymentStatusForAmount(
+          totalQar: total,
+          collectedQar: collected,
+        );
+
+        transaction.set(orderDoc, {
+          'id': orderCode,
+          'customerId': draft.customer.id,
+          'customerName': draft.customer.name,
+          'salesmanName': _auth.currentUser?.displayName ?? 'Salesman',
+          'orderDate': FieldValue.serverTimestamp(),
+          'itemsCount': itemsCount,
+          'channel': draft.channel,
+          'amountQar': total,
+          'paymentMethod': draft.paymentMethod,
+          'collectedAmountQar': collected,
+          'paymentStatus': _paymentStatusToString(paymentStatus),
+          'orderStatus': 'processing',
+          'items': items,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      });
+      if (!mounted) return;
+      _toast('Order placed successfully and stock updated.');
+    } catch (error) {
+      if (!mounted) return;
+      _toast('Failed to place order: $error');
+    }
+  }
+
+  Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, v) => MapEntry(key.toString(), v));
+    }
+    return <String, dynamic>{};
+  }
+
+  double? _nullableDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value.trim());
+    return null;
+  }
+
+  String _normalizeKey(String input) {
+    return input
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+  }
+
+  String _normalizeProductDocId(String code) {
+    return code.replaceAll('#', '').trim().toLowerCase();
+  }
+
   _Order? _orderFromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
     if (data == null) return null;
@@ -1127,6 +1897,8 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
       itemsCount: _intOr(data['itemsCount']),
       channel: _stringOr(data['channel'], fallback: 'Direct'),
       amountQar: _doubleOr(data['amountQar']),
+      collectedAmountQar: _doubleOr(data['collectedAmountQar']),
+      paymentMethod: _stringOr(data['paymentMethod'], fallback: 'Not set'),
       paymentStatus: _paymentStatusFromString(
         _stringOr(data['paymentStatus'], fallback: 'pending'),
       ),
@@ -1136,23 +1908,334 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
     );
   }
 
-  Future<void> _deleteOrder(_Order order) async {
-    final shouldDelete = await showDialog<bool>(
+  Future<void> _markOrderAsPaid(_Order order) async {
+    if (order.paymentStatus == _PaymentStatus.paid) {
+      _toast('Order ${order.id} is already marked as paid.');
+      return;
+    }
+    final shouldUpdate = await _showConfirmSideSheet(
+      title: 'Mark Payment as Paid',
+      message:
+          'Set payment status to Paid for ${order.id}?\n'
+          'This will set collected amount to ${_currency.format(order.amountQar)}.',
+      confirmLabel: 'Mark Paid',
+    );
+    if (shouldUpdate != true) return;
+
+    try {
+      final docId = order.docId.isEmpty ? order.id : order.docId;
+      await _firestore.collection(FirestoreCollections.orders).doc(docId).set({
+        'paymentStatus': 'paid',
+        'collectedAmountQar': order.amountQar,
+        'paymentCollectedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      if (!mounted) return;
+      _toast('Order ${order.id} payment updated to paid.');
+    } catch (error) {
+      if (!mounted) return;
+      _toast('Failed to update payment: $error');
+    }
+  }
+
+  Future<void> _updateOrderStatus(_Order order) async {
+    final nextStatus = await showGeneralDialog<_OrderStatus>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Order'),
-        content: Text('Delete order ${order.id}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+      barrierDismissible: true,
+      barrierLabel: 'Update order status',
+      barrierColor: const Color(0x400F172A),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, _, __) {
+        final width = MediaQuery.of(context).size.width;
+        final sheetWidth = width > 1080 ? 460.0 : (width > 720 ? 420.0 : width);
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.white,
+            child: SafeArea(
+              child: SizedBox(
+                width: sheetWidth,
+                height: double.infinity,
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Update status for ${order.id}',
+                              style: const TextStyle(
+                                color: Color(0xFF111827),
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Iconsax.close_circle, size: 20),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.all(18),
+                        children: [
+                          _statusOptionTile(
+                            label: 'Processing',
+                            active: order.orderStatus == _OrderStatus.processing,
+                            onTap: () =>
+                                Navigator.of(context).pop(_OrderStatus.processing),
+                          ),
+                          _statusOptionTile(
+                            label: 'Completed',
+                            active: order.orderStatus == _OrderStatus.delivered,
+                            onTap: () =>
+                                Navigator.of(context).pop(_OrderStatus.delivered),
+                          ),
+                          _statusOptionTile(
+                            label: 'Cancelled',
+                            active: order.orderStatus == _OrderStatus.cancelled,
+                            onTap: () =>
+                                Navigator.of(context).pop(_OrderStatus.cancelled),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
+        );
+      },
+      transitionBuilder: (context, animation, _, child) {
+        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
+
+    if (nextStatus == null || nextStatus == order.orderStatus) return;
+
+    try {
+      final docId = order.docId.isEmpty ? order.id : order.docId;
+      await _firestore.collection(FirestoreCollections.orders).doc(docId).set({
+        'orderStatus': _orderStatusStorageValue(nextStatus),
+        'updatedAt': FieldValue.serverTimestamp(),
+        if (nextStatus == _OrderStatus.delivered)
+          'completedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      if (!mounted) return;
+      _toast('Order ${order.id} status updated.');
+    } catch (error) {
+      if (!mounted) return;
+      _toast('Failed to update order status: $error');
+    }
+  }
+
+  Widget _statusOptionTile({
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFFE8F7F6) : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: active ? const Color(0xFF2EA8A5) : const Color(0xFFDDE2EA),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              active ? Iconsax.tick_circle : Iconsax.record_circle,
+              size: 18,
+              color: active ? const Color(0xFF2EA8A5) : const Color(0xFF6B7280),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: TextStyle(
+                color: active ? const Color(0xFF0F766E) : const Color(0xFF1F2937),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _viewOrder(_Order order) async {
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Order details',
+      barrierColor: const Color(0x400F172A),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, _, __) {
+        final width = MediaQuery.of(context).size.width;
+        final sheetWidth = width > 1080 ? 460.0 : (width > 720 ? 420.0 : width);
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.white,
+            child: SafeArea(
+              child: SizedBox(
+                width: sheetWidth,
+                height: double.infinity,
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Order ${order.id}',
+                              style: const TextStyle(
+                                color: Color(0xFF111827),
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Iconsax.close_circle, size: 20),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.all(18),
+                        children: [
+                          _orderDetailRow('Customer', order.customerName),
+                          _orderDetailRow('Salesman', order.salesmanName),
+                          _orderDetailRow(
+                            'Order Date',
+                            _dateFormat.format(order.orderDate),
+                          ),
+                          _orderDetailRow('Items', order.itemsCount.toString()),
+                          _orderDetailRow('Channel', order.channel),
+                          _orderDetailRow(
+                            'Amount',
+                            _currency.format(order.amountQar),
+                          ),
+                          _orderDetailRow('Payment Method', order.paymentMethod),
+                          _orderDetailRow(
+                            'Collected',
+                            _currency.format(order.collectedAmountQar),
+                          ),
+                          _orderDetailRow(
+                            'Payment',
+                            _paymentStyle(order.paymentStatus).$4,
+                          ),
+                          _orderDetailRow(
+                            'Order Status',
+                            _orderStyle(order.orderStatus).$4,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, _, child) {
+        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
+  }
+
+  Widget _orderDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 124,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFF111827),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _handleOrderAction(_Order order, _OrderAction action) async {
+    switch (action) {
+      case _OrderAction.updatePaid:
+        await _markOrderAsPaid(order);
+        break;
+      case _OrderAction.updateStatus:
+        await _updateOrderStatus(order);
+        break;
+      case _OrderAction.view:
+        await _viewOrder(order);
+        break;
+      case _OrderAction.delete:
+        await _deleteOrder(order);
+        break;
+    }
+  }
+
+  Future<void> _deleteOrder(_Order order) async {
+    final shouldDelete = await _showConfirmSideSheet(
+      title: 'Delete Order',
+      message: 'Delete order ${order.id}?',
+      confirmLabel: 'Delete',
     );
     if (shouldDelete != true) return;
 
@@ -1172,22 +2255,10 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
   Future<void> _deleteSelectedOrders() async {
     final ids = Set<String>.from(_selectedIds);
     if (ids.isEmpty) return;
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Selected Orders'),
-        content: Text('Delete ${ids.length} selected order(s)?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final shouldDelete = await _showConfirmSideSheet(
+      title: 'Delete Selected Orders',
+      message: 'Delete ${ids.length} selected order(s)?',
+      confirmLabel: 'Delete',
     );
     if (shouldDelete != true) return;
 
@@ -1208,53 +2279,6 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
       if (!mounted) return;
       _toast('Failed to delete selected orders: $error');
     }
-  }
-
-  Future<void> _sendBillToWhatsApp(_Order order) async {
-    String? targetNumber = _whatsAppOrderNumber;
-    if (targetNumber == null || targetNumber.trim().isEmpty) {
-      await _loadWhatsAppOrderNumber();
-      targetNumber = _whatsAppOrderNumber;
-    }
-    if (targetNumber == null || targetNumber.trim().isEmpty) {
-      _toast('Set Order WhatsApp Number in Settings first.');
-      return;
-    }
-
-    final normalized = _normalizePhone(targetNumber);
-    if (normalized.isEmpty) {
-      _toast('Invalid WhatsApp number in Settings.');
-      return;
-    }
-
-    final text =
-        'Order Bill\n'
-        'Order ID: ${order.id}\n'
-        'Customer: ${order.customerName}\n'
-        'Salesman: ${order.salesmanName}\n'
-        'Date: ${_dateFormat.format(order.orderDate)}\n'
-        'Items: ${order.itemsCount}\n'
-        'Amount: ${_currency.format(order.amountQar)}\n'
-        'Payment: ${_paymentStyle(order.paymentStatus).$4}\n'
-        'Status: ${_orderStyle(order.orderStatus).$4}';
-    final url = Uri.parse(
-      'https://wa.me/$normalized?text=${Uri.encodeComponent(text)}',
-    ).toString();
-
-    final opened = await openExternalUrl(url);
-    if (!opened) {
-      _toast('WhatsApp open is only supported on web in this build.');
-      return;
-    }
-    _toast('Opening WhatsApp for ${order.id}...');
-  }
-
-  String _normalizePhone(String value) {
-    final raw = value.trim();
-    if (raw.isEmpty) return '';
-    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.isEmpty) return '';
-    return digits;
   }
 
   String _stringOr(dynamic value, {String fallback = ''}) {
@@ -1288,6 +2312,8 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
     switch (raw.toLowerCase()) {
       case 'paid':
         return _PaymentStatus.paid;
+      case 'partial':
+        return _PaymentStatus.partial;
       case 'failed':
         return _PaymentStatus.failed;
       default:
@@ -1295,9 +2321,34 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
     }
   }
 
+  _PaymentStatus _paymentStatusForAmount({
+    required double totalQar,
+    required double collectedQar,
+  }) {
+    if (totalQar <= 0) return _PaymentStatus.pending;
+    if (collectedQar <= 0) return _PaymentStatus.pending;
+    if (collectedQar >= totalQar) return _PaymentStatus.paid;
+    return _PaymentStatus.partial;
+  }
+
+  String _paymentStatusToString(_PaymentStatus status) {
+    switch (status) {
+      case _PaymentStatus.paid:
+        return 'paid';
+      case _PaymentStatus.pending:
+        return 'pending';
+      case _PaymentStatus.partial:
+        return 'partial';
+      case _PaymentStatus.failed:
+        return 'failed';
+    }
+  }
+
   _OrderStatus _orderStatusFromString(String raw) {
     switch (raw.toLowerCase()) {
       case 'delivered':
+      case 'completed':
+      case 'complete':
         return _OrderStatus.delivered;
       case 'cancelled':
       case 'canceled':
@@ -1321,6 +2372,108 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
         .toUpperCase();
   }
 
+  Future<bool?> _showConfirmSideSheet({
+    required String title,
+    required String message,
+    required String confirmLabel,
+  }) {
+    return showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: title,
+      barrierColor: const Color(0x400F172A),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, _, __) {
+        final width = MediaQuery.of(context).size.width;
+        final sheetWidth = width > 1080 ? 460.0 : (width > 720 ? 420.0 : width);
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.white,
+            child: SafeArea(
+              child: SizedBox(
+                width: sheetWidth,
+                height: double.infinity,
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: const TextStyle(
+                                color: Color(0xFF111827),
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            icon: const Icon(Iconsax.close_circle, size: 20),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Text(
+                          message,
+                          style: const TextStyle(
+                            color: Color(0xFF111827),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: const Text('Cancel'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: Text(confirmLabel),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, _, child) {
+        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
+  }
+
   (Color, Color, Color, String) _paymentStyle(_PaymentStatus status) {
     switch (status) {
       case _PaymentStatus.paid:
@@ -1336,6 +2489,13 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
           const Color(0xFFDD9C00),
           const Color(0xFFF8EAC6),
           'Pending',
+        );
+      case _PaymentStatus.partial:
+        return (
+          const Color(0xFFFFF5EE),
+          const Color(0xFFE57828),
+          const Color(0xFFF8DEC9),
+          'Partial',
         );
       case _PaymentStatus.failed:
         return (
@@ -1354,7 +2514,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
           const Color(0xFFEAF7FF),
           const Color(0xFF2277B8),
           const Color(0xFFCDE8FA),
-          'Delivered',
+          'Completed',
         );
       case _OrderStatus.processing:
         return (
@@ -1370,6 +2530,17 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
           const Color(0xFFF7D5DA),
           'Cancelled',
         );
+    }
+  }
+
+  String _orderStatusStorageValue(_OrderStatus status) {
+    switch (status) {
+      case _OrderStatus.delivered:
+        return 'delivered';
+      case _OrderStatus.processing:
+        return 'processing';
+      case _OrderStatus.cancelled:
+        return 'cancelled';
     }
   }
 }

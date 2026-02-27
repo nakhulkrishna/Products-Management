@@ -332,6 +332,14 @@ class _TopAppBarState extends State<_TopAppBar> {
             Container(width: 1, height: 26, color: const Color(0xFFE8EBF0)),
             const SizedBox(width: 12),
             PopupMenuButton<String>(
+              color: Colors.white,
+              surfaceTintColor: Colors.white,
+              elevation: 8,
+              shadowColor: const Color(0x1A0F172A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              offset: const Offset(0, 42),
               onSelected: (value) {
                 switch (value) {
                   case 'settings':
