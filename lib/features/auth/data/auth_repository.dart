@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:products_catelogs/core/access/user_role.dart';
 import 'package:products_catelogs/core/constants/firestore_collections.dart';
 
 class AuthRepository {
@@ -47,7 +48,7 @@ class AuthRepository {
         uid: user.uid,
         fullName: fullName.trim(),
         email: email.trim(),
-        role: role.trim(),
+        role: appUserRoleFromRaw(role).firestoreValue,
         phone: phone.trim(),
         region: region.trim(),
         department: department.trim(),
@@ -84,7 +85,7 @@ class AuthRepository {
       'uid': uid,
       'fullName': fullName,
       'email': email,
-      'role': role.isEmpty ? 'Sales Manager' : role,
+      'role': appUserRoleFromRaw(role).firestoreValue,
       'phone': phone.isEmpty ? '+974 5500 1122' : phone,
       'region': region.isEmpty ? 'Doha' : region,
       'department': department.isEmpty ? 'Commercial' : department,

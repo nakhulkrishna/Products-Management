@@ -4,8 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart' as xls;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:products_catelogs/core/access/access_control.dart';
+import 'package:products_catelogs/core/access/user_role.dart';
 import 'package:products_catelogs/core/constants/firestore_collections.dart';
 import 'package:products_catelogs/core/utils/file_download.dart';
+import 'package:products_catelogs/features/shell/domain/sidebar_tab.dart';
 
 class SettingsTabPage extends StatefulWidget {
   final VoidCallback? onLogout;
@@ -25,10 +28,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   bool _isExportingReport = false;
   String _whatsAppOrderNumber = '+97455001122';
 
-  bool _twoFactorEnabled = true;
-  bool _emailNotifications = true;
-  bool _smsNotifications = false;
-  bool _weeklyDigest = true;
+  final bool _twoFactorEnabled = false;
   bool _deactivated = false;
 
   String _currency = 'QAR';
@@ -37,20 +37,14 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
 
   String _fullName = 'Sales Manager';
   String _email = 'manager@redrose.com';
-  String _role = 'Sales Manager';
+  String _role = 'Admin';
   String _phone = '+974 5500 1122';
   String _region = 'Doha';
   String _department = 'Commercial';
 
-  int _failedOrderAlertMinutes = 10;
-  int _lowStockThreshold = 20;
-
-  final Map<String, bool> _permissions = {
-    'Products': true,
-    'Orders': true,
-    'Staff': false,
-    'Settings': true,
-  };
+  Map<String, bool> _permissions = AccessControl.defaultPermissionsForRole(
+    AppUserRole.admin,
+  );
 
   final List<_SessionInfo> _sessions = [
     const _SessionInfo(
@@ -95,6 +89,14 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         data['whatsappOrderNumber'],
         fallback: _whatsAppOrderNumber,
       );
+      _currency = _valueOr(data['currency'], fallback: _currency);
+      _language = _valueOr(data['language'], fallback: _language);
+      _timezone = _valueOr(data['timezone'], fallback: _timezone);
+      final role = appUserRoleFromRaw(_role);
+      _permissions = {
+        ...AccessControl.defaultPermissionsForRole(role),
+        ...AccessControl.parsePermissions(data[AccessControl.permissionsField]),
+      };
     });
   }
 
@@ -135,8 +137,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               const SizedBox(height: 12),
               _buildSecuritySection(isNarrow),
               const SizedBox(height: 12),
-              _buildNotificationSection(),
-              const SizedBox(height: 12),
               _buildPreferenceSection(),
               const SizedBox(height: 12),
               _buildReportsAndIntegrationSection(),
@@ -164,7 +164,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         ),
         SizedBox(height: 4),
         Text(
-          'Manage account profile, security, notifications, and access controls.',
+          'Manage account profile, security, preferences, and access controls.',
           style: TextStyle(
             color: Color(0xFF8A94A6),
             fontWeight: FontWeight.w500,
@@ -224,7 +224,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                 ),
               ),
               _outlineActionButton(
-                icon: Icons.edit_outlined,
+                icon: Iconsax.edit,
                 label: 'Edit Profile',
                 onTap: _editProfile,
               ),
@@ -280,18 +280,12 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             subtitle: 'Roles and module access controls',
             onTap: _managePermissions,
           ),
-          _actionTile(
-            icon: Iconsax.notification,
-            title: 'Notification Rules',
-            subtitle: 'Control alerts for orders, targets, and stock',
-            onTap: _manageNotificationRules,
-          ),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: _confirmLogout,
-              icon: const Icon(Icons.logout_rounded),
+              icon: const Icon(Iconsax.logout),
               label: const Text('Logout'),
             ),
           ),
@@ -355,7 +349,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                 ),
               ),
               const Icon(
-                Icons.arrow_forward_ios_rounded,
+                Iconsax.arrow_right_2,
                 size: 14,
                 color: Color(0xFF8E99A9),
               ),
@@ -374,10 +368,14 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         _settingRow(
           icon: Iconsax.shield_tick,
           title: 'Two-Factor Authentication',
-          subtitle: 'Require OTP verification during login',
+          subtitle: 'Currently unavailable. Coming soon.',
           trailing: Switch(
             value: _twoFactorEnabled,
-            onChanged: (value) => setState(() => _twoFactorEnabled = value),
+            onChanged: (_) {
+              _toast(
+                'Two-Factor Authentication is currently unavailable. Coming soon.',
+              );
+            },
           ),
         ),
         _settingRow(
@@ -404,42 +402,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     );
   }
 
-  Widget _buildNotificationSection() {
-    return _sectionCard(
-      title: 'Notifications',
-      subtitle: 'Choose how you receive operational and sales alerts.',
-      children: [
-        _settingRow(
-          icon: Iconsax.sms,
-          title: 'Email Notifications',
-          subtitle: 'Order status updates and account activity',
-          trailing: Switch(
-            value: _emailNotifications,
-            onChanged: (value) => setState(() => _emailNotifications = value),
-          ),
-        ),
-        _settingRow(
-          icon: Iconsax.message,
-          title: 'SMS Notifications',
-          subtitle: 'Critical alerts for failed payments and stock issues',
-          trailing: Switch(
-            value: _smsNotifications,
-            onChanged: (value) => setState(() => _smsNotifications = value),
-          ),
-        ),
-        _settingRow(
-          icon: Iconsax.calendar,
-          title: 'Weekly Summary',
-          subtitle: 'Sales performance digest every Saturday',
-          trailing: Switch(
-            value: _weeklyDigest,
-            onChanged: (value) => setState(() => _weeklyDigest = value),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildPreferenceSection() {
     return _sectionCard(
       title: 'Preferences',
@@ -458,7 +420,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               borderRadius: BorderRadius.circular(14),
             ),
             offset: const Offset(0, 42),
-            onSelected: (value) => setState(() => _currency = value),
+            onSelected: _updateCurrency,
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'QAR', child: Text('QAR')),
               PopupMenuItem(value: 'USD', child: Text('USD')),
@@ -479,7 +441,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               borderRadius: BorderRadius.circular(14),
             ),
             offset: const Offset(0, 42),
-            onSelected: (value) => setState(() => _language = value),
+            onSelected: _updateLanguage,
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'English', child: Text('English')),
               PopupMenuItem(value: 'Arabic', child: Text('Arabic')),
@@ -500,7 +462,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               borderRadius: BorderRadius.circular(14),
             ),
             offset: const Offset(0, 42),
-            onSelected: (value) => setState(() => _timezone = value),
+            onSelected: _updateTimezone,
             itemBuilder: (context) => const [
               PopupMenuItem(
                 value: 'Asia/Qatar (GMT+3)',
@@ -516,7 +478,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           title: 'Order WhatsApp Number',
           subtitle: 'Current: $_whatsAppOrderNumber',
           trailing: _outlineActionButton(
-            icon: Icons.edit_outlined,
+            icon: Iconsax.edit,
             label: 'Edit',
             onTap: _configureWhatsAppNumber,
           ),
@@ -562,7 +524,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             children: [
               OutlinedButton.icon(
                 onPressed: _confirmLogout,
-                icon: const Icon(Icons.logout_rounded),
+                icon: const Icon(Iconsax.logout),
                 label: const Text('Logout'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFFB4232A),
@@ -599,7 +561,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           title: 'WhatsApp Integration',
           subtitle: 'Current: $_whatsAppOrderNumber',
           trailing: _outlineActionButton(
-            icon: Icons.edit_outlined,
+            icon: Iconsax.edit,
             label: 'Edit',
             onTap: _configureWhatsAppNumber,
           ),
@@ -609,7 +571,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           title: 'In-Stock Report',
           subtitle: 'Generate Excel for products with available stock',
           trailing: _outlineActionButton(
-            icon: Icons.download_rounded,
+            icon: Iconsax.document_download,
             label: 'Export',
             onTap: _isExportingReport ? () {} : () => _exportStockReport(false),
           ),
@@ -619,7 +581,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           title: 'Out-of-Stock Report',
           subtitle: 'Generate Excel for products with zero stock',
           trailing: _outlineActionButton(
-            icon: Icons.download_rounded,
+            icon: Iconsax.document_download,
             label: 'Export',
             onTap: _isExportingReport ? () {} : () => _exportStockReport(true),
           ),
@@ -757,7 +719,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             ),
           ),
           const SizedBox(width: 6),
-          const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
+          const Icon(Iconsax.arrow_down_1, size: 18),
         ],
       ),
     );
@@ -772,7 +734,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   Future<void> _editProfile() async {
     final fullNameController = TextEditingController(text: _fullName);
     final emailController = TextEditingController(text: _email);
-    final roleController = TextEditingController(text: _role);
+    var selectedRole = appUserRoleFromRaw(_role);
     final phoneController = TextEditingController(text: _phone);
     final regionController = TextEditingController(text: _region);
     final departmentController = TextEditingController(text: _department);
@@ -799,9 +761,21 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                   (value ?? '').trim().isEmpty ? 'Required' : null,
             ),
             const SizedBox(height: 8),
-            TextFormField(
-              controller: roleController,
+            DropdownButtonFormField<AppUserRole>(
+              initialValue: selectedRole,
               decoration: const InputDecoration(labelText: 'Role'),
+              items: AppUserRole.values
+                  .map(
+                    (role) => DropdownMenuItem<AppUserRole>(
+                      value: role,
+                      child: Text(role.label),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (role) {
+                if (role == null) return;
+                selectedRole = role;
+              },
             ),
             const SizedBox(height: 8),
             TextFormField(
@@ -833,7 +807,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             setState(() {
               _fullName = fullNameController.text.trim();
               _email = emailController.text.trim();
-              _role = roleController.text.trim();
+              _role = selectedRole.firestoreValue;
               _phone = phoneController.text.trim();
               _region = regionController.text.trim();
               _department = departmentController.text.trim();
@@ -876,13 +850,14 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         builder: (context, setDialogState) {
           return Column(
             mainAxisSize: MainAxisSize.min,
-            children: localPermissions.keys.map((module) {
+            children: SidebarTab.values.map((tab) {
+              final permissionKey = AccessControl.permissionKey(tab);
               return SwitchListTile(
                 dense: true,
-                title: Text(module),
-                value: localPermissions[module] ?? false,
+                title: Text(tab.label),
+                value: localPermissions[permissionKey] ?? false,
                 onChanged: (value) {
-                  setDialogState(() => localPermissions[module] = value);
+                  setDialogState(() => localPermissions[permissionKey] = value);
                 },
               );
             }).toList(),
@@ -895,105 +870,22 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () {
+          onPressed: () async {
+            final navigator = Navigator.of(context);
             setState(() {
               _permissions
                 ..clear()
                 ..addAll(localPermissions);
             });
-            Navigator.of(context).pop(true);
+            final ok = await _saveUserProfile();
+            if (!mounted) return;
+            navigator.pop(ok);
           },
           child: const Text('Save'),
         ),
       ],
     );
     if (saved == true) _toast('Permissions updated');
-  }
-
-  Future<void> _manageNotificationRules() async {
-    var failedMinutes = _failedOrderAlertMinutes;
-    var lowStock = _lowStockThreshold;
-    final saved = await _showSideSheet<bool>(
-      title: 'Notification Rules',
-      body: StatefulBuilder(
-        builder: (context, setDialogState) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text('Failed order alert after (minutes)'),
-                  ),
-                  SizedBox(
-                    width: 80,
-                    child: TextFormField(
-                      initialValue: failedMinutes.toString(),
-                      keyboardType: TextInputType.number,
-                      onChanged: (value) {
-                        final parsed = int.tryParse(value);
-                        if (parsed != null) failedMinutes = parsed;
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  const Expanded(child: Text('Low stock threshold (units)')),
-                  SizedBox(
-                    width: 80,
-                    child: TextFormField(
-                      initialValue: lowStock.toString(),
-                      keyboardType: TextInputType.number,
-                      onChanged: (value) {
-                        final parsed = int.tryParse(value);
-                        if (parsed != null) lowStock = parsed;
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              SwitchListTile(
-                dense: true,
-                title: const Text('Email Notifications'),
-                value: _emailNotifications,
-                onChanged: (value) {
-                  setDialogState(() => _emailNotifications = value);
-                },
-              ),
-              SwitchListTile(
-                dense: true,
-                title: const Text('SMS Notifications'),
-                value: _smsNotifications,
-                onChanged: (value) {
-                  setDialogState(() => _smsNotifications = value);
-                },
-              ),
-            ],
-          );
-        },
-      ),
-      actions: [
-        OutlinedButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            setState(() {
-              _failedOrderAlertMinutes = failedMinutes;
-              _lowStockThreshold = lowStock;
-            });
-            Navigator.of(context).pop(true);
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    );
-    if (saved == true) _toast('Notification rules saved');
   }
 
   Future<void> _manageSessions() async {
@@ -1008,7 +900,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(
-                  session.isCurrent ? Icons.laptop_mac : Icons.phone_iphone,
+                  session.isCurrent ? Iconsax.monitor : Iconsax.mobile,
                 ),
                 title: Text(session.device),
                 subtitle: Text('${session.location} • ${session.lastActive}'),
@@ -1125,10 +1017,49 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     }
   }
 
-  Future<void> _saveUserProfile() async {
+  Future<void> _updateCurrency(String value) async {
+    if (_currency == value) return;
+    final previous = _currency;
+    setState(() => _currency = value);
+    final saved = await _saveUserProfile();
+    if (!saved) {
+      if (!mounted) return;
+      setState(() => _currency = previous);
+      return;
+    }
+    if (mounted) _toast('Currency updated to $value.');
+  }
+
+  Future<void> _updateLanguage(String value) async {
+    if (_language == value) return;
+    final previous = _language;
+    setState(() => _language = value);
+    final saved = await _saveUserProfile();
+    if (!saved) {
+      if (!mounted) return;
+      setState(() => _language = previous);
+      return;
+    }
+    if (mounted) _toast('Language updated to $value.');
+  }
+
+  Future<void> _updateTimezone(String value) async {
+    if (_timezone == value) return;
+    final previous = _timezone;
+    setState(() => _timezone = value);
+    final saved = await _saveUserProfile();
+    if (!saved) {
+      if (!mounted) return;
+      setState(() => _timezone = previous);
+      return;
+    }
+    if (mounted) _toast('Timezone updated to $value.');
+  }
+
+  Future<bool> _saveUserProfile() async {
     final user = _auth.currentUser;
-    if (user == null) return;
-    if (_isSavingProfile) return;
+    if (user == null) return false;
+    if (_isSavingProfile) return false;
     setState(() => _isSavingProfile = true);
     try {
       await _firestore
@@ -1143,12 +1074,18 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             'region': _region,
             'department': _department,
             'whatsappOrderNumber': _whatsAppOrderNumber,
+            'currency': _currency,
+            'language': _language,
+            'timezone': _timezone,
+            AccessControl.permissionsField: _permissions,
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
+      return true;
     } catch (error) {
       if (mounted) {
         _toast('Failed to save settings: $error');
       }
+      return false;
     } finally {
       if (mounted) {
         setState(() => _isSavingProfile = false);
@@ -1327,7 +1264,11 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                     if (actions.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-                        child: Wrap(spacing: 10, runSpacing: 10, children: actions),
+                        child: Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: actions,
+                        ),
                       ),
                   ],
                 ),
@@ -1337,7 +1278,10 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         );
       },
       transitionBuilder: (context, animation, _, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+        );
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),

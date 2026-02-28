@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import 'package:products_catelogs/core/constants/firestore_collections.dart';
+import 'package:products_catelogs/features/auth/application/auth_providers.dart';
 
 enum _StaffStatus { active, onLeave, inactive }
 
@@ -69,23 +71,22 @@ class _Salesman {
   }
 }
 
-class StaffsTabPage extends StatefulWidget {
+class StaffsTabPage extends ConsumerStatefulWidget {
   const StaffsTabPage({super.key});
 
   @override
-  State<StaffsTabPage> createState() => _StaffsTabPageState();
+  ConsumerState<StaffsTabPage> createState() => _StaffsTabPageState();
 }
 
-class _StaffsTabPageState extends State<StaffsTabPage> {
+class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
   static const int _rowsPerPage = 13;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _searchController = TextEditingController();
-  final NumberFormat _currency = NumberFormat.currency(
-    locale: 'en_QA',
-    symbol: 'QAR ',
-    decimalDigits: 0,
-  );
+  NumberFormat get _currency => ref
+      .read(userPreferencesProvider)
+      .currencyFormatter(decimalDigits: 0);
+  String get _currencyCode => ref.read(userPreferencesProvider).currency;
 
   String _query = '';
   _StaffFilter _statusFilter = _StaffFilter.all;
@@ -94,7 +95,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
   String? _loadError;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _salesmenSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ordersSub;
-  final ScrollController _tableScrollController = ScrollController();
+  final ScrollController _tableHorizontalScrollController = ScrollController();
   final Set<String> _selectedIds = <String>{};
   final Map<String, int> _completedDealsBySalesman = <String, int>{};
   final Map<String, double> _completedRevenueBySalesman = <String, double>{};
@@ -284,7 +285,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
     _salesmenSub?.cancel();
     _ordersSub?.cancel();
     _searchController.dispose();
-    _tableScrollController.dispose();
+    _tableHorizontalScrollController.dispose();
     super.dispose();
   }
 
@@ -314,7 +315,11 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                 field: 'amountQar',
               );
               counts.update(key, (value) => value + 1, ifAbsent: () => 1);
-              revenues.update(key, (value) => value + amount, ifAbsent: () => amount);
+              revenues.update(
+                key,
+                (value) => value + amount,
+                ifAbsent: () => amount,
+              );
             }
             if (!mounted) return;
             setState(() {
@@ -441,7 +446,10 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
     await batch.commit();
   }
 
-  Map<String, dynamic> _salesmanToMap(_Salesman salesman, {bool create = false}) {
+  Map<String, dynamic> _salesmanToMap(
+    _Salesman salesman, {
+    bool create = false,
+  }) {
     final now = FieldValue.serverTimestamp();
     return {
       'id': salesman.id,
@@ -630,9 +638,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                           });
                         },
                   icon: Icon(
-                    isAllSelected
-                        ? Icons.check_box_rounded
-                        : Icons.check_box_outline_blank_rounded,
+                    isAllSelected ? Iconsax.tick_square : Iconsax.square,
                     color: const Color(0xFF2EA8A5),
                   ),
                 ),
@@ -656,13 +662,15 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                   child: const Text('Select All'),
                 ),
                 TextButton.icon(
-                  onPressed: selectedCount == 0 ? null : _deactivateSelectedStaff,
+                  onPressed: selectedCount == 0
+                      ? null
+                      : _deactivateSelectedStaff,
                   icon: const Icon(Iconsax.user_minus, size: 16),
                   label: const Text('Deactivate'),
                 ),
                 TextButton.icon(
                   onPressed: selectedCount == 0 ? null : _deleteSelectedStaff,
-                  icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                  icon: const Icon(Iconsax.trash, size: 16),
                   label: const Text('Delete Selected'),
                 ),
               ],
@@ -701,7 +709,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                             const SizedBox(height: 10),
                             OutlinedButton.icon(
                               onPressed: _subscribeSalesmen,
-                              icon: const Icon(Icons.refresh_rounded),
+                              icon: const Icon(Iconsax.refresh),
                               label: const Text('Retry'),
                             ),
                           ],
@@ -731,6 +739,38 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
   }
 
   Widget _buildHeader(bool compact) {
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Staffs',
+            style: TextStyle(
+              fontSize: 30,
+              height: 1.1,
+              color: Color(0xFF111827),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Manage sales team access, activity, and status from one place.',
+            style: TextStyle(
+              color: Color(0xFF8A94A6),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _headerActionButton(
+            onTap: _addSalesman,
+            icon: Iconsax.add,
+            label: 'Add Salesman',
+            highlighted: true,
+          ),
+        ],
+      );
+    }
+
     return Row(
       children: [
         const Expanded(
@@ -757,13 +797,12 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
             ],
           ),
         ),
-        if (!compact)
-          _headerActionButton(
-            onTap: _addSalesman,
-            icon: Icons.add_rounded,
-            label: 'Add Salesman',
-            highlighted: true,
-          ),
+        _headerActionButton(
+          onTap: _addSalesman,
+          icon: Iconsax.add,
+          label: 'Add Salesman',
+          highlighted: true,
+        ),
       ],
     );
   }
@@ -819,7 +858,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       },
       decoration: InputDecoration(
         hintText: 'Search staff',
-        prefixIcon: const Icon(Icons.search_rounded),
+        prefixIcon: const Icon(Iconsax.search_normal),
         fillColor: const Color(0xFFFFFFFF),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -864,7 +903,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.tune_rounded, size: 18),
+            const Icon(Iconsax.filter4, size: 18),
             const SizedBox(width: 8),
             Text(switch (_statusFilter) {
               _StaffFilter.all => 'All',
@@ -873,7 +912,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
               _StaffFilter.inactive => 'Inactive',
             }),
             const SizedBox(width: 8),
-            const Icon(Icons.keyboard_arrow_down_rounded),
+            const Icon(Iconsax.arrow_down_1),
           ],
         ),
       ),
@@ -881,53 +920,56 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
   }
 
   Widget _buildDesktopTable(List<_Salesman> salesmen, double width) {
-    return Column(
-      children: [
-        _buildTableHeader(width),
-        const Divider(height: 1, color: Color(0xFFE8EBF0)),
-        Expanded(
-          child: Scrollbar(
-            controller: _tableScrollController,
-            thumbVisibility: true,
-            child: ListView.separated(
-              controller: _tableScrollController,
-              itemCount: salesmen.length,
-              separatorBuilder: (_, __) =>
-                  const Divider(height: 1, color: Color(0xFFE8EBF0)),
-              itemBuilder: (context, index) {
-                final salesman = salesmen[index];
-                final selected = _selectedIds.contains(salesman.id);
-                return _buildTableRow(salesman, selected, width);
-              },
-            ),
+    return Scrollbar(
+      controller: _tableHorizontalScrollController,
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        controller: _tableHorizontalScrollController,
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: width,
+          child: Column(
+            children: [
+              _buildTableHeader(width),
+              const Divider(height: 1, color: Color(0xFFE8EBF0)),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: salesmen.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: Color(0xFFE8EBF0)),
+                  itemBuilder: (context, index) {
+                    final salesman = salesmen[index];
+                    final selected = _selectedIds.contains(salesman.id);
+                    return _buildTableRow(salesman, selected, width);
+                  },
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildTableHeader(double width) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Container(
-        width: width,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        color: const Color(0xFFF8FAFC),
-        child: const Row(
-          children: [
-            SizedBox(width: 44),
-            _HeaderCell(width: 114, text: 'Staff ID'),
-            _HeaderCell(width: 210, text: 'Name'),
-            _HeaderCell(width: 160, text: 'Role'),
-            _HeaderCell(width: 130, text: 'Region'),
-            _HeaderCell(width: 238, text: 'Contact'),
-            _HeaderCell(width: 130, text: 'Deals Closed'),
-            _HeaderCell(width: 152, text: 'Target (QAR)'),
-            _HeaderCell(width: 160, text: 'Achieved (QAR)'),
-            _HeaderCell(width: 132, text: 'Status'),
-            _HeaderCell(width: 132, text: 'Action'),
-          ],
-        ),
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      color: const Color(0xFFF8FAFC),
+      child: Row(
+        children: [
+          SizedBox(width: 44),
+          _HeaderCell(width: 114, text: 'Staff ID'),
+          _HeaderCell(width: 210, text: 'Name'),
+          _HeaderCell(width: 160, text: 'Role'),
+          _HeaderCell(width: 130, text: 'Region'),
+          _HeaderCell(width: 238, text: 'Contact'),
+          _HeaderCell(width: 130, text: 'Deals Closed'),
+          _HeaderCell(width: 152, text: 'Target ($_currencyCode)'),
+          _HeaderCell(width: 160, text: 'Achieved ($_currencyCode)'),
+          _HeaderCell(width: 132, text: 'Status'),
+          _HeaderCell(width: 132, text: 'Action'),
+        ],
       ),
     );
   }
@@ -935,141 +977,135 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
   Widget _buildTableRow(_Salesman salesman, bool selected, double width) {
     final statusStyle = _statusStyle(salesman.status);
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: width,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        color: selected ? const Color(0xFFF3FAFA) : Colors.white,
-        child: Row(
-          children: [
-            SizedBox(
-              width: 44,
-              child: Checkbox(
-                value: selected,
-                onChanged: (_) {
-                  setState(() {
-                    if (selected) {
-                      _selectedIds.remove(salesman.id);
-                    } else {
-                      _selectedIds.add(salesman.id);
-                    }
-                  });
-                },
-              ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      color: selected ? const Color(0xFFF3FAFA) : Colors.white,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 44,
+            child: Checkbox(
+              value: selected,
+              onChanged: (_) {
+                setState(() {
+                  if (selected) {
+                    _selectedIds.remove(salesman.id);
+                  } else {
+                    _selectedIds.add(salesman.id);
+                  }
+                });
+              },
             ),
-            _RowCell(width: 114, text: salesman.id),
-            SizedBox(
-              width: 210,
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 15,
-                    backgroundColor: const Color(0xFFE8EDF5),
-                    backgroundImage: salesman.imageUrl == null
-                        ? null
-                        : NetworkImage(salesman.imageUrl!),
-                    child: salesman.imageUrl == null
-                        ? Text(
-                            _initialsOf(salesman.name),
-                            style: const TextStyle(
-                              color: Color(0xFF4B5563),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      salesman.name,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF111827),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            _RowCell(width: 160, text: salesman.role),
-            _RowCell(width: 130, text: salesman.region),
-            SizedBox(
-              width: 238,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    salesman.phone,
-                    style: const TextStyle(
-                      color: Color(0xFF2488B7),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    salesman.email,
+          ),
+          _RowCell(width: 114, text: salesman.id),
+          SizedBox(
+            width: 210,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 15,
+                  backgroundColor: const Color(0xFFE8EDF5),
+                  backgroundImage: salesman.imageUrl == null
+                      ? null
+                      : NetworkImage(salesman.imageUrl!),
+                  child: salesman.imageUrl == null
+                      ? Text(
+                          _initialsOf(salesman.name),
+                          style: const TextStyle(
+                            color: Color(0xFF4B5563),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    salesman.name,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Color(0xFF6B7280),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF111827),
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            _RowCell(
-              width: 130,
-              text: _resolvedDealsClosed(salesman).toString(),
-            ),
-            _RowCell(
-              width: 152,
-              text: _currency.format(salesman.monthlyTargetQar),
-            ),
-            _RowCell(
-              width: 160,
-              text: _currency.format(_resolvedAchievedSales(salesman)),
-              color: const Color(0xFF1F8A70),
-            ),
-            SizedBox(
-              width: 132,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
+          ),
+          _RowCell(width: 160, text: salesman.role),
+          _RowCell(width: 130, text: salesman.region),
+          SizedBox(
+            width: 238,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  salesman.phone,
+                  style: const TextStyle(
+                    color: Color(0xFF2488B7),
+                    fontWeight: FontWeight.w500,
                   ),
-                  decoration: BoxDecoration(
-                    color: statusStyle.$1,
-                    borderRadius: BorderRadius.circular(9),
-                    border: Border.all(color: statusStyle.$3),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  salesman.email,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.circle, size: 7, color: statusStyle.$2),
-                      const SizedBox(width: 6),
-                      Text(
-                        statusStyle.$4,
-                        style: TextStyle(
-                          color: statusStyle.$2,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
+                ),
+              ],
+            ),
+          ),
+          _RowCell(width: 130, text: _resolvedDealsClosed(salesman).toString()),
+          _RowCell(
+            width: 152,
+            text: _currency.format(salesman.monthlyTargetQar),
+          ),
+          _RowCell(
+            width: 160,
+            text: _currency.format(_resolvedAchievedSales(salesman)),
+            color: const Color(0xFF1F8A70),
+          ),
+          SizedBox(
+            width: 132,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: statusStyle.$1,
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(color: statusStyle.$3),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Iconsax.record_circle, size: 7, color: statusStyle.$2),
+                    const SizedBox(width: 6),
+                    Text(
+                      statusStyle.$4,
+                      style: TextStyle(
+                        color: statusStyle.$2,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            SizedBox(width: 132, child: _buildSalesmanActionMenu(salesman)),
-          ],
-        ),
+          ),
+          SizedBox(width: 132, child: _buildSalesmanActionMenu(salesman)),
+        ],
       ),
     );
   }
@@ -1217,7 +1253,11 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: const Color(0xFFDDE2EA)),
           ),
-          child: const Icon(Iconsax.setting, size: 18, color: Color(0xFF4B5563)),
+          child: const Icon(
+            Iconsax.setting,
+            size: 18,
+            color: Color(0xFF4B5563),
+          ),
         ),
         onSelected: (action) => _handleSalesmanAction(salesman, action),
         itemBuilder: (context) => [
@@ -1389,7 +1429,10 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
         );
       },
       transitionBuilder: (context, animation, _, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+        );
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),
@@ -1466,42 +1509,11 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
   Widget _buildPaginationFooter({required int totalItems}) {
     final totalPages = _totalPages;
     final safePage = _currentPage > totalPages ? totalPages : _currentPage;
-
-    return Row(
+    final pager = Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFDDE2EA)),
-          ),
-          child: const Row(
-            children: [
-              Text(
-                'Show: 13',
-                style: TextStyle(
-                  color: Color(0xFF111827),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              SizedBox(width: 8),
-              Icon(Icons.swap_vert_rounded, size: 17),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          '$totalItems items',
-          style: const TextStyle(
-            color: Color(0xFF6B7280),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const Spacer(),
         _paginationButton(
-          icon: Icons.arrow_back_rounded,
+          icon: Iconsax.arrow_left_2,
           enabled: safePage > 1,
           onTap: () {
             setState(() {
@@ -1528,7 +1540,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
         ),
         const SizedBox(width: 8),
         _paginationButton(
-          icon: Icons.arrow_forward_rounded,
+          icon: Iconsax.arrow_right_2,
           enabled: safePage < totalPages,
           onTap: () {
             setState(() {
@@ -1537,6 +1549,95 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
           },
         ),
       ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 760;
+        if (isNarrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFDDE2EA)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Show: 13',
+                          style: TextStyle(
+                            color: Color(0xFF111827),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Icon(Iconsax.arrow_swap, size: 17),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    '$totalItems items',
+                    style: const TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Align(alignment: Alignment.centerRight, child: pager),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFDDE2EA)),
+              ),
+              child: const Row(
+                children: [
+                  Text(
+                    'Show: 13',
+                    style: TextStyle(
+                      color: Color(0xFF111827),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Icon(Iconsax.arrow_swap, size: 17),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '$totalItems items',
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const Spacer(),
+            pager,
+          ],
+        );
+      },
     );
   }
 
@@ -1638,7 +1739,9 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
       title: shouldDeactivate ? 'Deactivate Staff' : 'Activate Staff',
       icon: shouldDeactivate ? Iconsax.user_minus : Iconsax.user_add,
       body: Text(
-        shouldDeactivate ? 'Deactivate ${staff.name}?' : 'Activate ${staff.name}?',
+        shouldDeactivate
+            ? 'Deactivate ${staff.name}?'
+            : 'Activate ${staff.name}?',
       ),
       actions: [
         TextButton(
@@ -1674,7 +1777,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
   Future<void> _deleteStaff(_Salesman staff) async {
     final confirmed = await _showRightSheet<bool>(
       title: 'Delete Salesman',
-      icon: Icons.delete_outline_rounded,
+      icon: Iconsax.trash,
       iconColor: const Color(0xFFE65A5A),
       body: Text(
         'Delete ${staff.name} from the salesman list?\n\nAny linked profile image will also be removed.',
@@ -1685,7 +1788,9 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65A5A)),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFE65A5A),
+          ),
           onPressed: () => Navigator.of(context).pop(true),
           child: const Text('Delete'),
         ),
@@ -1709,7 +1814,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
     final count = ids.length;
     final confirmed = await _showRightSheet<bool>(
       title: 'Delete Selected',
-      icon: Icons.delete_sweep_outlined,
+      icon: Iconsax.trash,
       iconColor: const Color(0xFFE65A5A),
       body: Text(
         'Delete $count selected salesman account(s)?\n\nLinked images will also be removed.',
@@ -1720,7 +1825,9 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65A5A)),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFE65A5A),
+          ),
           onPressed: () => Navigator.of(context).pop(true),
           child: const Text('Delete'),
         ),
@@ -1742,7 +1849,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
     if (staff.imageUrl == null) return;
     final confirmed = await _showRightSheet<bool>(
       title: 'Delete Staff Image',
-      icon: Icons.image_not_supported_outlined,
+      icon: Iconsax.gallery_slash,
       iconColor: const Color(0xFFB08900),
       body: Text('Remove profile image for ${staff.name}?'),
       actions: [
@@ -1775,7 +1882,9 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   (Color, Color, Color, String) _statusStyle(_StaffStatus status) {
@@ -1827,7 +1936,10 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
         _completedRevenueBySalesman[salesman.name.toLowerCase().trim()] ?? 0;
     if (computed > 0) return computed;
     if (_salesmen.length == 1 && _completedRevenueBySalesman.isNotEmpty) {
-      return _completedRevenueBySalesman.values.fold<double>(0, (a, b) => a + b);
+      return _completedRevenueBySalesman.values.fold<double>(
+        0,
+        (a, b) => a + b,
+      );
     }
     return salesman.achievedSalesQar;
   }
@@ -1837,7 +1949,9 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
     final roleController = TextEditingController(
       text: existing?.role ?? 'Salesman',
     );
-    final regionController = TextEditingController(text: existing?.region ?? '');
+    final regionController = TextEditingController(
+      text: existing?.region ?? '',
+    );
     final phoneController = TextEditingController(text: existing?.phone ?? '');
     final emailController = TextEditingController(text: existing?.email ?? '');
     final dealsController = TextEditingController(
@@ -1857,7 +1971,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
 
     final result = await _showRightSheet<_Salesman>(
       title: existing == null ? 'Add Salesman' : 'Edit Salesman',
-      icon: existing == null ? Icons.person_add_alt_1 : Icons.edit_outlined,
+      icon: existing == null ? Iconsax.user_add : Iconsax.edit,
       body: StatefulBuilder(
         builder: (context, setDialogState) => Form(
           key: formKey,
@@ -1996,7 +2110,9 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                       validator: (value) {
                         final email = (value ?? '').trim();
                         if (email.isEmpty) return 'Required';
-                        if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+                        if (!RegExp(
+                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                        ).hasMatch(email)) {
                           return 'Invalid email';
                         }
                         return null;
@@ -2021,7 +2137,9 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                     TextFormField(
                       controller: dealsController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Deals Closed'),
+                      decoration: const InputDecoration(
+                        labelText: 'Deals Closed',
+                      ),
                       validator: (value) {
                         final raw = (value ?? '').trim();
                         if (raw.isEmpty) return 'Required';
@@ -2036,7 +2154,9 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                     TextFormField(
                       controller: targetController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Target (QAR)'),
+                      decoration: InputDecoration(
+                        labelText: 'Target ($_currencyCode)',
+                      ),
                       validator: (value) {
                         final raw = (value ?? '').trim();
                         if (raw.isEmpty) return 'Required';
@@ -2051,8 +2171,8 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                     TextFormField(
                       controller: achievedController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Achieved Sales (QAR)',
+                      decoration: InputDecoration(
+                        labelText: 'Achieved Sales ($_currencyCode)',
                       ),
                       validator: (value) {
                         final raw = (value ?? '').trim();
@@ -2081,7 +2201,8 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
             if (!(formKey.currentState?.validate() ?? false)) return;
             final deals = int.tryParse(dealsController.text.trim()) ?? 0;
             final target = double.tryParse(targetController.text.trim()) ?? 0;
-            final achieved = double.tryParse(achievedController.text.trim()) ?? 0;
+            final achieved =
+                double.tryParse(achievedController.text.trim()) ?? 0;
             final imageUrl = imageUrlController.text.trim();
             final id = existing?.id ?? _nextSalesmanId();
             Navigator.of(context).pop(
@@ -2101,7 +2222,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
             );
           },
           icon: Icon(
-            existing == null ? Icons.person_add_alt_1 : Icons.check_rounded,
+            existing == null ? Iconsax.user_add : Iconsax.tick_circle,
             size: 16,
           ),
           label: Text(existing == null ? 'Add' : 'Save'),
@@ -2170,7 +2291,9 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
           alignment: Alignment.centerRight,
           child: Material(
             color: Colors.white,
-            borderRadius: const BorderRadius.horizontal(left: Radius.circular(18)),
+            borderRadius: const BorderRadius.horizontal(
+              left: Radius.circular(18),
+            ),
             child: SizedBox(
               width: MediaQuery.of(context).size.width > 620
                   ? 540
@@ -2197,7 +2320,7 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
                           ),
                           IconButton(
                             onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.close_rounded),
+                            icon: const Icon(Iconsax.close_circle),
                           ),
                         ],
                       ),
@@ -2225,7 +2348,10 @@ class _StaffsTabPageState extends State<StaffsTabPage> {
         );
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),

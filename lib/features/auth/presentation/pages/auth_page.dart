@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:iconsax/iconsax.dart';
+import 'package:products_catelogs/core/access/user_role.dart';
 import 'package:products_catelogs/features/auth/application/auth_providers.dart';
 
 class AuthPage extends ConsumerStatefulWidget {
@@ -13,7 +15,7 @@ class AuthPage extends ConsumerStatefulWidget {
 class _AuthPageState extends ConsumerState<AuthPage> {
   final _formKey = GlobalKey<FormState>();
   final _fullNameController = TextEditingController();
-  final _roleController = TextEditingController(text: 'Sales Manager');
+  AppUserRole _selectedRole = AppUserRole.staff;
   final _phoneController = TextEditingController(text: '+974 5500 1122');
   final _regionController = TextEditingController(text: 'Doha');
   final _departmentController = TextEditingController(text: 'Commercial');
@@ -26,7 +28,6 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   @override
   void dispose() {
     _fullNameController.dispose();
-    _roleController.dispose();
     _phoneController.dispose();
     _regionController.dispose();
     _departmentController.dispose();
@@ -84,7 +85,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                       textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
                         labelText: 'Full Name',
-                        hintText: 'Sales Manager',
+                        hintText: 'User Name',
                       ),
                       validator: (value) {
                         if (_isLogin) return null;
@@ -96,18 +97,23 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                       },
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _roleController,
-                      enabled: !_isSubmitting,
-                      textInputAction: TextInputAction.next,
+                    DropdownButtonFormField<AppUserRole>(
+                      initialValue: _selectedRole,
                       decoration: const InputDecoration(labelText: 'Role'),
-                      validator: (value) {
-                        if (_isLogin) return null;
-                        if ((value ?? '').trim().isEmpty) {
-                          return 'Role is required.';
-                        }
-                        return null;
-                      },
+                      items: AppUserRole.values
+                          .map(
+                            (role) => DropdownMenuItem<AppUserRole>(
+                              value: role,
+                              child: Text(role.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: _isSubmitting
+                          ? null
+                          : (role) {
+                              if (role == null) return;
+                              setState(() => _selectedRole = role);
+                            },
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
@@ -142,7 +148,9 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                       controller: _departmentController,
                       enabled: !_isSubmitting,
                       textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(labelText: 'Department'),
+                      decoration: const InputDecoration(
+                        labelText: 'Department',
+                      ),
                       validator: (value) {
                         if (_isLogin) return null;
                         if ((value ?? '').trim().isEmpty) {
@@ -186,9 +194,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                           setState(() => _hidePassword = !_hidePassword);
                         },
                         icon: Icon(
-                          _hidePassword
-                              ? Icons.visibility_off_rounded
-                              : Icons.visibility_rounded,
+                          _hidePassword ? Iconsax.eye_slash : Iconsax.eye,
                         ),
                       ),
                     ),
@@ -251,7 +257,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                                   _isLogin = !_isLogin;
                                   _passwordController.clear();
                                   if (!_isLogin) {
-                                    _roleController.text = 'Sales Manager';
+                                    _selectedRole = AppUserRole.staff;
                                     _phoneController.text = '+974 5500 1122';
                                     _regionController.text = 'Doha';
                                     _departmentController.text = 'Commercial';
@@ -278,7 +284,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final fullName = _fullNameController.text.trim();
-    final role = _roleController.text.trim();
+    final role = _selectedRole.firestoreValue;
     final phone = _phoneController.text.trim();
     final region = _regionController.text.trim();
     final department = _departmentController.text.trim();

@@ -5,17 +5,28 @@ import 'package:archive/archive.dart';
 import 'package:excel/excel.dart' as xls;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/features/products/application/bulk_upload_background_service.dart';
 import 'package:products_catelogs/features/products/presentation/widgets/add_edit_product_form_view.dart';
 
+enum BulkUploadMode { upsert, updateOnly, createOnly }
+
 class BulkUploadProductsView extends StatefulWidget {
-  final Future<void> Function(ProductFormResult product) onUploadOne;
+  final Future<void> Function(ProductFormResult product) onUpsertOne;
+  final Future<void> Function(ProductFormResult product) onUpdateOne;
+  final Future<void> Function(ProductFormResult product) onCreateOne;
   final VoidCallback onBack;
+  final bool inSideSheet;
+  final String currencyCode;
 
   const BulkUploadProductsView({
     super.key,
-    required this.onUploadOne,
+    required this.onUpsertOne,
+    required this.onUpdateOne,
+    required this.onCreateOne,
     required this.onBack,
+    this.inSideSheet = false,
+    this.currencyCode = 'QAR',
   });
 
   @override
@@ -31,6 +42,7 @@ class _BulkUploadProductsViewState extends State<BulkUploadProductsView> {
       'Select one ZIP that contains an Excel file and image files.';
   String? _selectedZipName;
   int _uploadedCount = 0;
+  BulkUploadMode _mode = BulkUploadMode.upsert;
 
   final List<_BulkUploadRow> _rows = [];
   final List<String> _parseIssues = [];
@@ -56,99 +68,156 @@ class _BulkUploadProductsViewState extends State<BulkUploadProductsView> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isNarrow = constraints.maxWidth < 1000;
-        return SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _header(isNarrow),
-              const SizedBox(height: 12),
-              _card(
-                title: 'ZIP Format',
-                subtitle:
-                    'Supports simple fields and full unit/pricing config.',
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('1. Keep one Excel file (.xlsx or .xls).'),
-                    SizedBox(height: 4),
-                    Text('2. Keep image names in Excel images column.'),
-                    SizedBox(height: 4),
-                    Text(
-                      '3. Separate multiple image names by comma/semicolon.',
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      '4. Optional full config columns: baseunit, saleunits, localprices, localofferprices, hyperprices, hyperofferprices, stockunit.',
-                    ),
-                    SizedBox(height: 4),
-                    Text('5. ZIP all files and upload the ZIP file.'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              _card(
-                title: 'Actions',
-                subtitle: _selectedZipName ?? 'No ZIP selected',
-                child: Column(
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _isParsing || _isUploading
-                            ? null
-                            : _pickAndParseZip,
-                        icon: const Icon(Icons.folder_open_rounded),
-                        label: Text(_isParsing ? 'Parsing...' : 'Select ZIP'),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: canUpload ? _uploadAll : null,
-                        icon: const Icon(Icons.cloud_upload_rounded),
-                        label: const Text('Upload All Products'),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      _statusMessage,
-                      style: const TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    if (_isUploading) ...[
-                      const SizedBox(height: 10),
-                      LinearProgressIndicator(value: progress),
-                      const SizedBox(height: 4),
+        final isNarrow = constraints.maxWidth < 1000 || widget.inSideSheet;
+        final horizontalPadding = widget.inSideSheet ? 14.0 : 0.0;
+        final topPadding = widget.inSideSheet ? 14.0 : 0.0;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            topPadding,
+            horizontalPadding,
+            12,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _header(isNarrow),
+                if (widget.inSideSheet) ...[
+                  const SizedBox(height: 12),
+                  _sheetIntroCard(),
+                ],
+                const SizedBox(height: 12),
+                _card(
+                  title: 'ZIP Format',
+                  subtitle:
+                      'Supports simple fields and full unit/pricing config.',
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('1. Keep one Excel file (.xlsx or .xls).'),
+                      SizedBox(height: 4),
+                      Text('2. Keep image names in Excel images column.'),
+                      SizedBox(height: 4),
                       Text(
-                        'Uploaded $_uploadedCount / ${_rows.length}',
+                        '3. Separate multiple image names by comma/semicolon.',
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        '4. Optional full config columns: baseunit, saleunits, localprices, localofferprices, hyperprices, hyperofferprices, stockunit.',
+                      ),
+                      SizedBox(height: 4),
+                      Text('5. ZIP all files and upload the ZIP file.'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _card(
+                  title: 'Actions',
+                  subtitle: _selectedZipName ?? 'No ZIP selected',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      DropdownButtonFormField<BulkUploadMode>(
+                        initialValue: _mode,
+                        decoration: const InputDecoration(
+                          labelText: 'Upload Mode',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: BulkUploadMode.upsert,
+                            child: Text('Upsert (Create + Update)'),
+                          ),
+                          DropdownMenuItem(
+                            value: BulkUploadMode.updateOnly,
+                            child: Text('Update Only'),
+                          ),
+                          DropdownMenuItem(
+                            value: BulkUploadMode.createOnly,
+                            child: Text('Create Only'),
+                          ),
+                        ],
+                        onChanged: _isParsing || _isUploading
+                            ? null
+                            : (value) {
+                                if (value == null) return;
+                                setState(() => _mode = value);
+                              },
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _modeHelperText(_mode),
                         style: const TextStyle(
-                          color: Color(0xFF4B5565),
-                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF6B7280),
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _isParsing || _isUploading
+                              ? null
+                              : _pickAndParseZip,
+                          icon: const Icon(Iconsax.folder_open),
+                          label: Text(_isParsing ? 'Parsing...' : 'Select ZIP'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(46),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: canUpload ? _uploadAll : null,
+                          icon: const Icon(Iconsax.cloud_add),
+                          label: Text(_uploadButtonLabel(_mode)),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(46),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        _statusMessage,
+                        style: const TextStyle(
+                          color: Color(0xFF6B7280),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (_isUploading) ...[
+                        const SizedBox(height: 10),
+                        LinearProgressIndicator(value: progress),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Uploaded $_uploadedCount / ${_rows.length}',
+                          style: const TextStyle(
+                            color: Color(0xFF4B5565),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              _summaryRow(),
-              if (_parseIssues.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                _issuesCard('Parse Issues', _parseIssues),
+                _summaryRow(),
+                if (_parseIssues.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _issuesCard('Parse Issues', _parseIssues),
+                ],
+                if (_uploadIssues.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _issuesCard('Upload Issues', _uploadIssues),
+                ],
+                if (_rows.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _previewCard(),
+                ],
               ],
-              if (_uploadIssues.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _issuesCard('Upload Issues', _uploadIssues),
-              ],
-              if (_rows.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _previewCard(),
-              ],
-            ],
+            ),
           ),
         );
       },
@@ -156,28 +225,59 @@ class _BulkUploadProductsViewState extends State<BulkUploadProductsView> {
   }
 
   Widget _header(bool isNarrow) {
+    final titleStyle = TextStyle(
+      fontSize: widget.inSideSheet ? 24 : 30,
+      height: 1.1,
+      color: const Color(0xFF111827),
+      fontWeight: FontWeight.w700,
+    );
+    final subtitleStyle = const TextStyle(
+      color: Color(0xFF8A94A6),
+      fontWeight: FontWeight.w500,
+    );
+
+    if (widget.inSideSheet) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Bulk Upload Products', style: titleStyle),
+                const SizedBox(height: 4),
+                Text(
+                  'Import products from one ZIP package.',
+                  style: subtitleStyle,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: widget.onBack,
+            tooltip: 'Close',
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.white,
+              side: const BorderSide(color: Color(0xFFDDE2EA)),
+            ),
+            icon: const Icon(Iconsax.close_circle),
+          ),
+        ],
+      );
+    }
+
     return Row(
       children: [
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Bulk Upload Products',
-                style: TextStyle(
-                  fontSize: 30,
-                  height: 1.1,
-                  color: Color(0xFF111827),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              SizedBox(height: 4),
+              Text('Bulk Upload Products', style: titleStyle),
+              const SizedBox(height: 4),
               Text(
                 'Import products from Excel + ZIP images for web.',
-                style: TextStyle(
-                  color: Color(0xFF8A94A6),
-                  fontWeight: FontWeight.w500,
-                ),
+                style: subtitleStyle,
               ),
             ],
           ),
@@ -185,7 +285,7 @@ class _BulkUploadProductsViewState extends State<BulkUploadProductsView> {
         if (!isNarrow)
           OutlinedButton.icon(
             onPressed: widget.onBack,
-            icon: const Icon(Icons.arrow_back_rounded),
+            icon: const Icon(Iconsax.arrow_left_2),
             label: const Text('Back to Products'),
           ),
       ],
@@ -199,10 +299,10 @@ class _BulkUploadProductsViewState extends State<BulkUploadProductsView> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(widget.inSideSheet ? 16 : 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(widget.inSideSheet ? 18 : 16),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Column(
@@ -233,44 +333,121 @@ class _BulkUploadProductsViewState extends State<BulkUploadProductsView> {
     );
   }
 
+  Widget _sheetIntroCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          colors: [Color(0xFFE8F6F6), Color(0xFFF2F7FF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: const Color(0xFFD7E6EF)),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Recommended flow',
+            style: TextStyle(
+              color: Color(0xFF0F172A),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          SizedBox(height: 6),
+          Text(
+            '1) Select ZIP  2) Review issues  3) Start upload',
+            style: TextStyle(
+              color: Color(0xFF334155),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _summaryRow() {
-    return Row(
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
       children: [
-        Expanded(child: _summaryTile('Ready', _rows.length)),
-        const SizedBox(width: 8),
-        Expanded(child: _summaryTile('Parse Issues', _parseIssues.length)),
-        const SizedBox(width: 8),
-        Expanded(child: _summaryTile('Upload Issues', _uploadIssues.length)),
+        _summaryTile(
+          label: 'Ready',
+          value: _rows.length,
+          icon: Iconsax.tick_circle,
+          accent: const Color(0xFF0E9F6E),
+          background: const Color(0xFFECFDF3),
+        ),
+        _summaryTile(
+          label: 'Parse Issues',
+          value: _parseIssues.length,
+          icon: Iconsax.warning_2,
+          accent: const Color(0xFFD97706),
+          background: const Color(0xFFFFF7ED),
+        ),
+        _summaryTile(
+          label: 'Upload Issues',
+          value: _uploadIssues.length,
+          icon: Iconsax.close_circle,
+          accent: const Color(0xFFDC2626),
+          background: const Color(0xFFFEF2F2),
+        ),
       ],
     );
   }
 
-  Widget _summaryTile(String label, int value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+  Widget _summaryTile({
+    required String label,
+    required int value,
+    required IconData icon,
+    required Color accent,
+    required Color background,
+  }) {
+    final tileWidth = widget.inSideSheet ? 124.0 : 160.0;
+    return SizedBox(
+      width: tileWidth,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+          color: background,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: accent.withValues(alpha: 0.18)),
       ),
       child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            value.toString(),
-            style: const TextStyle(
-              color: Color(0xFF111827),
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
+            Row(
+              children: [
+                Icon(icon, size: 16, color: accent),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    label,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: accent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF6B7280),
-              fontWeight: FontWeight.w600,
+            const SizedBox(height: 8),
+            Text(
+              value.toString(),
+              style: const TextStyle(
+                color: Color(0xFF111827),
+                fontSize: 26,
+                height: 1,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -334,7 +511,7 @@ class _BulkUploadProductsViewState extends State<BulkUploadProductsView> {
                     ),
                   ),
                   Text(
-                    'QAR ${(_rows[i].localPricesByUnit[_rows[i].baseUnit] ?? 0).toStringAsFixed(2)}',
+                    '${widget.currencyCode} ${(_rows[i].localPricesByUnit[_rows[i].baseUnit] ?? 0).toStringAsFixed(2)}',
                     style: const TextStyle(
                       color: Color(0xFF111827),
                       fontWeight: FontWeight.w700,
@@ -703,19 +880,11 @@ class _BulkUploadProductsViewState extends State<BulkUploadProductsView> {
       final baseLocalPrice = row.localPricesByUnit[baseUnit] ?? 0;
       final baseLocalOffer =
           row.localOfferPricesByUnit[baseUnit] ?? row.legacyOfferPrice;
-      final baseHyperPrice =
-          row.hyperPricesByUnit[baseUnit] ??
-          row.legacyHyperPrice ??
-          baseLocalPrice;
-      final baseHyperOffer =
-          row.hyperOfferPricesByUnit[baseUnit] ?? row.legacyOfferPrice;
-
       final localRows = <MarketUnitPrice>[];
       final hyperRows = <MarketUnitPrice>[];
 
       for (final saleUnit in saleUnits) {
         final unit = saleUnit.unit;
-        final conversion = saleUnit.conversionToBaseUnit;
 
         final localManual = row.localPricesByUnit[unit];
         final localManualOffer = row.localOfferPricesByUnit[unit];
@@ -728,10 +897,8 @@ class _BulkUploadProductsViewState extends State<BulkUploadProductsView> {
             overrideEnabled: localManual != null,
             manualPrice: localManual,
             manualOfferPrice: localManualOffer,
-            autoPrice: localManual == null ? baseLocalPrice * conversion : null,
-            autoOfferPrice: localManualOffer == null && baseLocalOffer != null
-                ? baseLocalOffer * conversion
-                : null,
+            autoPrice: null,
+            autoOfferPrice: null,
           ),
         );
 
@@ -741,10 +908,8 @@ class _BulkUploadProductsViewState extends State<BulkUploadProductsView> {
             overrideEnabled: hyperManual != null,
             manualPrice: hyperManual,
             manualOfferPrice: hyperManualOffer,
-            autoPrice: hyperManual == null ? baseHyperPrice * conversion : null,
-            autoOfferPrice: hyperManualOffer == null && baseHyperOffer != null
-                ? baseHyperOffer * conversion
-                : null,
+            autoPrice: null,
+            autoOfferPrice: null,
           ),
         );
       }
@@ -781,7 +946,7 @@ class _BulkUploadProductsViewState extends State<BulkUploadProductsView> {
       _backgroundService
           .start(
             items: payloads,
-            uploader: (item, index) => widget.onUploadOne(item),
+            uploader: (item, index) => _uploadOneByMode(item),
           )
           .catchError((_) {}),
     );
@@ -809,6 +974,39 @@ class _BulkUploadProductsViewState extends State<BulkUploadProductsView> {
         ..addAll(value.errors);
       _statusMessage = value.message;
     });
+  }
+
+  Future<void> _uploadOneByMode(ProductFormResult item) {
+    switch (_mode) {
+      case BulkUploadMode.upsert:
+        return widget.onUpsertOne(item);
+      case BulkUploadMode.updateOnly:
+        return widget.onUpdateOne(item);
+      case BulkUploadMode.createOnly:
+        return widget.onCreateOne(item);
+    }
+  }
+
+  String _uploadButtonLabel(BulkUploadMode mode) {
+    switch (mode) {
+      case BulkUploadMode.upsert:
+        return 'Upload All (Create + Update)';
+      case BulkUploadMode.updateOnly:
+        return 'Upload All (Update Only)';
+      case BulkUploadMode.createOnly:
+        return 'Upload All (Create Only)';
+    }
+  }
+
+  String _modeHelperText(BulkUploadMode mode) {
+    switch (mode) {
+      case BulkUploadMode.upsert:
+        return 'Recommended. Existing codes are updated, new codes are created.';
+      case BulkUploadMode.updateOnly:
+        return 'Only updates existing product codes. Missing codes will fail.';
+      case BulkUploadMode.createOnly:
+        return 'Only creates new product codes. Existing codes will fail.';
+    }
   }
 
   bool _isImageFile(String path) {

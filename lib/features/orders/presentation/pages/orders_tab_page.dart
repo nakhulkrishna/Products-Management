@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import 'package:products_catelogs/core/constants/firestore_collections.dart';
+import 'package:products_catelogs/features/auth/application/auth_providers.dart';
 
 enum _OrderStatus { delivered, processing, cancelled }
 
@@ -127,25 +129,26 @@ class _OrderDraftResult {
   });
 }
 
-class OrdersTabPage extends StatefulWidget {
+class OrdersTabPage extends ConsumerStatefulWidget {
   const OrdersTabPage({super.key});
 
   @override
-  State<OrdersTabPage> createState() => _OrdersTabPageState();
+  ConsumerState<OrdersTabPage> createState() => _OrdersTabPageState();
 }
 
-class _OrdersTabPageState extends State<OrdersTabPage> {
+class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
   static const int _rowsPerPage = 13;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final TextEditingController _searchController = TextEditingController();
-  final NumberFormat _currency = NumberFormat.currency(
-    locale: 'en_QA',
-    symbol: 'QAR ',
-    decimalDigits: 0,
-  );
-  final DateFormat _dateFormat = DateFormat('yyyy-MM-dd');
+  final ScrollController _tableHorizontalScrollController = ScrollController();
+  NumberFormat get _currency => ref
+      .read(userPreferencesProvider)
+      .currencyFormatter(decimalDigits: 0);
+  DateFormat get _dateFormat =>
+      ref.read(userPreferencesProvider).dateFormatter();
+  String get _currencyCode => ref.read(userPreferencesProvider).currency;
 
   String _query = '';
   _OrderFilter _statusFilter = _OrderFilter.all;
@@ -313,6 +316,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
   void dispose() {
     _ordersSub?.cancel();
     _searchController.dispose();
+    _tableHorizontalScrollController.dispose();
     super.dispose();
   }
 
@@ -460,9 +464,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                           });
                         },
                   icon: Icon(
-                    isAllSelected
-                        ? Icons.check_box_rounded
-                        : Icons.check_box_outline_blank_rounded,
+                    isAllSelected ? Iconsax.tick_square : Iconsax.square,
                     color: const Color(0xFF2EA8A5),
                   ),
                 ),
@@ -526,7 +528,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                             const SizedBox(height: 10),
                             OutlinedButton.icon(
                               onPressed: _subscribeOrders,
-                              icon: const Icon(Icons.refresh_rounded),
+                              icon: const Icon(Iconsax.refresh),
                               label: const Text('Retry'),
                             ),
                           ],
@@ -556,6 +558,38 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
   }
 
   Widget _buildHeader(bool compact) {
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Order List',
+            style: TextStyle(
+              fontSize: 30,
+              height: 1.1,
+              color: Color(0xFF111827),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Track fulfillment, payment, and delivery operations in real time.',
+            style: TextStyle(
+              color: Color(0xFF8A94A6),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _headerActionButton(
+            onTap: _creatingOrder ? () {} : _addOrder,
+            icon: Iconsax.add,
+            label: 'Add Order',
+            highlighted: true,
+          ),
+        ],
+      );
+    }
+
     return Row(
       children: [
         const Expanded(
@@ -582,13 +616,12 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
             ],
           ),
         ),
-        if (!compact)
-          _headerActionButton(
-            onTap: _creatingOrder ? () {} : _addOrder,
-            icon: Icons.add_rounded,
-            label: 'Add Order',
-            highlighted: true,
-          ),
+        _headerActionButton(
+          onTap: _creatingOrder ? () {} : _addOrder,
+          icon: Iconsax.add,
+          label: 'Add Order',
+          highlighted: true,
+        ),
       ],
     );
   }
@@ -644,7 +677,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
       },
       decoration: InputDecoration(
         hintText: 'Search orders',
-        prefixIcon: const Icon(Icons.search_rounded),
+        prefixIcon: const Icon(Iconsax.search_normal),
         fillColor: const Color(0xFFFFFFFF),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -692,7 +725,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.tune_rounded, size: 18),
+            const Icon(Iconsax.filter4, size: 18),
             const SizedBox(width: 8),
             Text(switch (_statusFilter) {
               _OrderFilter.all => 'All',
@@ -701,7 +734,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
               _OrderFilter.cancelled => 'Cancelled',
             }),
             const SizedBox(width: 8),
-            const Icon(Icons.keyboard_arrow_down_rounded),
+            const Icon(Iconsax.arrow_down_1),
           ],
         ),
       ),
@@ -709,51 +742,56 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
   }
 
   Widget _buildDesktopTable(List<_Order> orders, double width) {
-    return Column(
-      children: [
-        _buildTableHeader(width),
-        const Divider(height: 1, color: Color(0xFFE8EBF0)),
-        Expanded(
-          child: Scrollbar(
-            thumbVisibility: true,
-            child: ListView.separated(
-              itemCount: orders.length,
-              separatorBuilder: (_, __) =>
-                  const Divider(height: 1, color: Color(0xFFE8EBF0)),
-              itemBuilder: (context, index) {
-                final order = orders[index];
-                final selected = _selectedIds.contains(order.id);
-                return _buildTableRow(order, selected, width);
-              },
-            ),
+    return Scrollbar(
+      controller: _tableHorizontalScrollController,
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        controller: _tableHorizontalScrollController,
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: width,
+          child: Column(
+            children: [
+              _buildTableHeader(width),
+              const Divider(height: 1, color: Color(0xFFE8EBF0)),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: orders.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: Color(0xFFE8EBF0)),
+                  itemBuilder: (context, index) {
+                    final order = orders[index];
+                    final selected = _selectedIds.contains(order.id);
+                    return _buildTableRow(order, selected, width);
+                  },
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildTableHeader(double width) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Container(
-        width: width,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        color: const Color(0xFFF8FAFC),
-        child: const Row(
-          children: [
-            SizedBox(width: 44),
-            _HeaderCell(width: 124, text: 'Order ID'),
-            _HeaderCell(width: 216, text: 'Customer'),
-            _HeaderCell(width: 176, text: 'Salesman'),
-            _HeaderCell(width: 132, text: 'Order Date'),
-            _HeaderCell(width: 86, text: 'Items'),
-            _HeaderCell(width: 136, text: 'Channel'),
-            _HeaderCell(width: 128, text: 'Amount (QAR)'),
-            _HeaderCell(width: 138, text: 'Payment'),
-            _HeaderCell(width: 140, text: 'Order Status'),
-            _HeaderCell(width: 110, text: 'Action'),
-          ],
-        ),
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      color: const Color(0xFFF8FAFC),
+      child: Row(
+        children: [
+          SizedBox(width: 44),
+          _HeaderCell(width: 124, text: 'Order ID'),
+          _HeaderCell(width: 216, text: 'Customer'),
+          _HeaderCell(width: 176, text: 'Salesman'),
+          _HeaderCell(width: 132, text: 'Order Date'),
+          _HeaderCell(width: 86, text: 'Items'),
+          _HeaderCell(width: 136, text: 'Channel'),
+          _HeaderCell(width: 128, text: 'Amount ($_currencyCode)'),
+          _HeaderCell(width: 138, text: 'Payment'),
+          _HeaderCell(width: 140, text: 'Order Status'),
+          _HeaderCell(width: 110, text: 'Action'),
+        ],
       ),
     );
   }
@@ -762,101 +800,98 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
     final paymentStyle = _paymentStyle(order.paymentStatus);
     final orderStyle = _orderStyle(order.orderStatus);
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: width,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        color: selected ? const Color(0xFFF3FAFA) : Colors.white,
-        child: Row(
-          children: [
-            SizedBox(
-              width: 44,
-              child: Checkbox(
-                value: selected,
-                onChanged: (_) {
-                  setState(() {
-                    if (selected) {
-                      _selectedIds.remove(order.id);
-                    } else {
-                      _selectedIds.add(order.id);
-                    }
-                  });
-                },
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      color: selected ? const Color(0xFFF3FAFA) : Colors.white,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 44,
+            child: Checkbox(
+              value: selected,
+              onChanged: (_) {
+                setState(() {
+                  if (selected) {
+                    _selectedIds.remove(order.id);
+                  } else {
+                    _selectedIds.add(order.id);
+                  }
+                });
+              },
+            ),
+          ),
+          _RowCell(width: 124, text: order.id),
+          SizedBox(
+            width: 216,
+            child: Text(
+              order.customerName,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF111827),
+                fontWeight: FontWeight.w600,
               ),
             ),
-            _RowCell(width: 124, text: order.id),
-            SizedBox(
-              width: 216,
-              child: Text(
-                order.customerName,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF111827),
-                  fontWeight: FontWeight.w600,
+          ),
+          SizedBox(
+            width: 176,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: const Color(0xFFE8EDF5),
+                  child: Text(
+                    _initialsOf(order.salesmanName),
+                    style: const TextStyle(
+                      color: Color(0xFF4B5563),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            SizedBox(
-              width: 176,
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 14,
-                    backgroundColor: const Color(0xFFE8EDF5),
-                    child: Text(
-                      _initialsOf(order.salesmanName),
-                      style: const TextStyle(
-                        color: Color(0xFF4B5563),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    order.salesmanName,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF1F2937),
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      order.salesmanName,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF1F2937),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            _RowCell(width: 132, text: _dateFormat.format(order.orderDate)),
-            _RowCell(width: 86, text: order.itemsCount.toString()),
-            _RowCell(
-              width: 136,
-              text: order.channel,
-              color: const Color(0xFF2488B7),
+          ),
+          _RowCell(width: 132, text: _dateFormat.format(order.orderDate)),
+          _RowCell(width: 86, text: order.itemsCount.toString()),
+          _RowCell(
+            width: 136,
+            text: order.channel,
+            color: const Color(0xFF2488B7),
+          ),
+          _RowCell(width: 128, text: _currency.format(order.amountQar)),
+          SizedBox(
+            width: 138,
+            child: _statusChip(
+              label: paymentStyle.$4,
+              textColor: paymentStyle.$2,
+              background: paymentStyle.$1,
+              borderColor: paymentStyle.$3,
             ),
-            _RowCell(width: 128, text: _currency.format(order.amountQar)),
-            SizedBox(
-              width: 138,
-              child: _statusChip(
-                label: paymentStyle.$4,
-                textColor: paymentStyle.$2,
-                background: paymentStyle.$1,
-                borderColor: paymentStyle.$3,
-              ),
+          ),
+          SizedBox(
+            width: 140,
+            child: _statusChip(
+              label: orderStyle.$4,
+              textColor: orderStyle.$2,
+              background: orderStyle.$1,
+              borderColor: orderStyle.$3,
             ),
-            SizedBox(
-              width: 140,
-              child: _statusChip(
-                label: orderStyle.$4,
-                textColor: orderStyle.$2,
-                background: orderStyle.$1,
-                borderColor: orderStyle.$3,
-              ),
-            ),
-            SizedBox(width: 110, child: _buildOrderActionMenu(order)),
-          ],
-        ),
+          ),
+          SizedBox(width: 110, child: _buildOrderActionMenu(order)),
+        ],
       ),
     );
   }
@@ -879,7 +914,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.circle, size: 7, color: textColor),
+            Icon(Iconsax.record_circle, size: 7, color: textColor),
             const SizedBox(width: 6),
             Text(
               label,
@@ -1044,7 +1079,11 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: const Color(0xFFDDE2EA)),
           ),
-          child: const Icon(Iconsax.setting, size: 18, color: Color(0xFF4B5563)),
+          child: const Icon(
+            Iconsax.setting,
+            size: 18,
+            color: Color(0xFF4B5563),
+          ),
         ),
         onSelected: (action) => _handleOrderAction(order, action),
         itemBuilder: (context) => [
@@ -1097,42 +1136,11 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
   Widget _buildPaginationFooter({required int totalItems}) {
     final totalPages = _totalPages;
     final safePage = _currentPage > totalPages ? totalPages : _currentPage;
-
-    return Row(
+    final pager = Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFDDE2EA)),
-          ),
-          child: const Row(
-            children: [
-              Text(
-                'Show: 13',
-                style: TextStyle(
-                  color: Color(0xFF111827),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              SizedBox(width: 8),
-              Icon(Icons.swap_vert_rounded, size: 17),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          '$totalItems items',
-          style: const TextStyle(
-            color: Color(0xFF6B7280),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const Spacer(),
         _paginationButton(
-          icon: Icons.arrow_back_rounded,
+          icon: Iconsax.arrow_left_2,
           enabled: safePage > 1,
           onTap: () {
             setState(() {
@@ -1159,7 +1167,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
         ),
         const SizedBox(width: 8),
         _paginationButton(
-          icon: Icons.arrow_forward_rounded,
+          icon: Iconsax.arrow_right_2,
           enabled: safePage < totalPages,
           onTap: () {
             setState(() {
@@ -1168,6 +1176,95 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
           },
         ),
       ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 760;
+        if (isNarrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFDDE2EA)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Show: 13',
+                          style: TextStyle(
+                            color: Color(0xFF111827),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Icon(Iconsax.arrow_swap, size: 17),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    '$totalItems items',
+                    style: const TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Align(alignment: Alignment.centerRight, child: pager),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFDDE2EA)),
+              ),
+              child: const Row(
+                children: [
+                  Text(
+                    'Show: 13',
+                    style: TextStyle(
+                      color: Color(0xFF111827),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Icon(Iconsax.arrow_swap, size: 17),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '$totalItems items',
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const Spacer(),
+            pager,
+          ],
+        );
+      },
     );
   }
 
@@ -1389,7 +1486,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                               ),
                               IconButton(
                                 onPressed: () => Navigator.of(context).pop(),
-                                icon: const Icon(Icons.close_rounded),
+                                icon: const Icon(Iconsax.close_circle),
                               ),
                             ],
                           ),
@@ -1476,8 +1573,9 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                                       () => collectedAmount = parsed,
                                     );
                                   },
-                                  decoration: const InputDecoration(
-                                    labelText: 'Collected Amount (QAR)',
+                                  decoration: InputDecoration(
+                                    labelText:
+                                        'Collected Amount ($_currencyCode)',
                                     hintText: '0',
                                   ),
                                 ),
@@ -1517,7 +1615,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                                       );
                                     });
                                   },
-                                  icon: const Icon(Icons.add_rounded),
+                                  icon: const Icon(Iconsax.add),
                                   label: const Text('Add Product'),
                                 ),
                                 const SizedBox(height: 10),
@@ -1728,7 +1826,7 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                 const SizedBox(width: 6),
                 IconButton(
                   onPressed: onRemove,
-                  icon: const Icon(Icons.delete_outline_rounded),
+                  icon: const Icon(Iconsax.trash),
                 ),
               ],
             ],
@@ -1990,21 +2088,25 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                         children: [
                           _statusOptionTile(
                             label: 'Processing',
-                            active: order.orderStatus == _OrderStatus.processing,
-                            onTap: () =>
-                                Navigator.of(context).pop(_OrderStatus.processing),
+                            active:
+                                order.orderStatus == _OrderStatus.processing,
+                            onTap: () => Navigator.of(
+                              context,
+                            ).pop(_OrderStatus.processing),
                           ),
                           _statusOptionTile(
                             label: 'Completed',
                             active: order.orderStatus == _OrderStatus.delivered,
-                            onTap: () =>
-                                Navigator.of(context).pop(_OrderStatus.delivered),
+                            onTap: () => Navigator.of(
+                              context,
+                            ).pop(_OrderStatus.delivered),
                           ),
                           _statusOptionTile(
                             label: 'Cancelled',
                             active: order.orderStatus == _OrderStatus.cancelled,
-                            onTap: () =>
-                                Navigator.of(context).pop(_OrderStatus.cancelled),
+                            onTap: () => Navigator.of(
+                              context,
+                            ).pop(_OrderStatus.cancelled),
                           ),
                         ],
                       ),
@@ -2017,7 +2119,10 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
         );
       },
       transitionBuilder: (context, animation, _, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+        );
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),
@@ -2075,7 +2180,9 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
             Text(
               label,
               style: TextStyle(
-                color: active ? const Color(0xFF0F766E) : const Color(0xFF1F2937),
+                color: active
+                    ? const Color(0xFF0F766E)
+                    : const Color(0xFF1F2937),
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -2147,7 +2254,10 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
                             'Amount',
                             _currency.format(order.amountQar),
                           ),
-                          _orderDetailRow('Payment Method', order.paymentMethod),
+                          _orderDetailRow(
+                            'Payment Method',
+                            order.paymentMethod,
+                          ),
                           _orderDetailRow(
                             'Collected',
                             _currency.format(order.collectedAmountQar),
@@ -2171,7 +2281,10 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
         );
       },
       transitionBuilder: (context, animation, _, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+        );
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),
@@ -2462,7 +2575,10 @@ class _OrdersTabPageState extends State<OrdersTabPage> {
         );
       },
       transitionBuilder: (context, animation, _, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+        );
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),

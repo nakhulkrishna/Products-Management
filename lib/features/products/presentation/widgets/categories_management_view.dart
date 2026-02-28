@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/features/products/data/repositories/products_repository.dart';
 
 class CategoriesManagementView extends StatefulWidget {
@@ -101,7 +102,7 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
         if (!isNarrow)
           OutlinedButton.icon(
             onPressed: _busy ? null : widget.onBack,
-            icon: const Icon(Icons.arrow_back_rounded),
+            icon: const Icon(Iconsax.arrow_left_2),
             label: const Text('Back to Products'),
           ),
       ],
@@ -132,7 +133,7 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
                   width: double.infinity,
                   child: FilledButton.icon(
                     onPressed: _busy ? null : _addCategory,
-                    icon: const Icon(Icons.add_rounded),
+                    icon: const Icon(Iconsax.add),
                     label: Text(_busy ? 'Processing...' : 'Add Category'),
                   ),
                 ),
@@ -152,7 +153,7 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
                 const SizedBox(width: 10),
                 FilledButton.icon(
                   onPressed: _busy ? null : _addCategory,
-                  icon: const Icon(Icons.add_rounded),
+                  icon: const Icon(Iconsax.add),
                   label: Text(_busy ? 'Processing...' : 'Add Category'),
                 ),
               ],
@@ -179,7 +180,7 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
             },
             decoration: const InputDecoration(
               hintText: 'Search categories',
-              prefixIcon: Icon(Icons.search_rounded),
+              prefixIcon: Icon(Iconsax.search_normal),
             ),
           ),
           const SizedBox(height: 10),
@@ -272,7 +273,7 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
                 border: Border.all(color: const Color(0xFFDDE2EA)),
               ),
               child: const Icon(
-                Icons.more_vert_rounded,
+                Iconsax.more,
                 size: 18,
                 color: Color(0xFF4B5563),
               ),
@@ -292,7 +293,7 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
                 value: 'rename',
                 child: Row(
                   children: [
-                    Icon(Icons.edit_outlined, size: 18, color: Color(0xFF374151)),
+                    Icon(Iconsax.edit, size: 18, color: Color(0xFF374151)),
                     SizedBox(width: 10),
                     Text('Rename'),
                   ],
@@ -302,11 +303,7 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
                 value: 'delete',
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.delete_outline_rounded,
-                      size: 18,
-                      color: Color(0xFFE65A5A),
-                    ),
+                    Icon(Iconsax.trash, size: 18, color: Color(0xFFE65A5A)),
                     SizedBox(width: 10),
                     Text('Delete'),
                   ],
@@ -345,7 +342,7 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
     final controller = TextEditingController(text: category.name);
     final updated = await _showRightSheet<String>(
       title: 'Rename Category',
-      icon: Icons.drive_file_rename_outline,
+      icon: Iconsax.edit,
       body: StatefulBuilder(
         builder: (context, setSheetState) => Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -393,7 +390,11 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Icon(Icons.info_outline_rounded, size: 15, color: Color(0xFF6B7280)),
+                const Icon(
+                  Iconsax.info_circle,
+                  size: 15,
+                  color: Color(0xFF6B7280),
+                ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -417,7 +418,7 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
         ),
         FilledButton.icon(
           onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-          icon: const Icon(Icons.check_rounded, size: 16),
+          icon: const Icon(Iconsax.tick_circle, size: 16),
           label: const Text('Save'),
         ),
       ],
@@ -445,7 +446,7 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
   Future<void> _deleteCategory(ProductCategoryRecord category) async {
     final shouldDelete = await _showRightSheet<bool>(
       title: 'Delete Category',
-      icon: Icons.delete_outline_rounded,
+      icon: Iconsax.trash,
       iconColor: const Color(0xFFE65A5A),
       body: Text(
         'Delete "${category.name}"?\n\nThis action cannot be undone.',
@@ -457,9 +458,11 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
           child: const Text('Cancel'),
         ),
         FilledButton.icon(
-          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65A5A)),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFE65A5A),
+          ),
           onPressed: () => Navigator.of(context).pop(true),
-          icon: const Icon(Icons.delete_rounded, size: 16),
+          icon: const Icon(Iconsax.trash, size: 16),
           label: const Text('Delete'),
         ),
       ],
@@ -502,7 +505,9 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
           alignment: Alignment.centerRight,
           child: Material(
             color: Colors.white,
-            borderRadius: const BorderRadius.horizontal(left: Radius.circular(18)),
+            borderRadius: const BorderRadius.horizontal(
+              left: Radius.circular(18),
+            ),
             child: SizedBox(
               width: MediaQuery.of(context).size.width > 620
                   ? 520
@@ -529,7 +534,7 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
                           ),
                           IconButton(
                             onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.close_rounded),
+                            icon: const Icon(Iconsax.close_circle),
                           ),
                         ],
                       ),
@@ -557,7 +562,10 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
         );
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:iconsax/iconsax.dart';
 
 class ProductDetailsData {
   final String id;
@@ -46,12 +47,14 @@ class ProductDetailsView extends StatelessWidget {
   final ProductDetailsData data;
   final VoidCallback onBack;
   final VoidCallback onEdit;
+  final String currencyCode;
 
   const ProductDetailsView({
     super.key,
     required this.data,
     required this.onBack,
     required this.onEdit,
+    this.currencyCode = 'QAR',
   });
 
   @override
@@ -123,7 +126,7 @@ class ProductDetailsView extends StatelessWidget {
         if (!isNarrow)
           OutlinedButton.icon(
             onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_rounded),
+            icon: const Icon(Iconsax.arrow_left_2),
             label: const Text('Back to List'),
           ),
       ],
@@ -225,12 +228,12 @@ class ProductDetailsView extends StatelessWidget {
             children: [
               OutlinedButton.icon(
                 onPressed: onBack,
-                icon: const Icon(Icons.arrow_back_rounded, size: 16),
+                icon: const Icon(Iconsax.arrow_left_2, size: 16),
                 label: const Text('Back'),
               ),
               FilledButton.icon(
                 onPressed: onEdit,
-                icon: const Icon(Icons.edit_outlined, size: 16),
+                icon: const Icon(Iconsax.edit, size: 16),
                 label: const Text('Edit Product'),
               ),
             ],
@@ -266,14 +269,14 @@ class ProductDetailsView extends StatelessWidget {
         children: [
           _metricRow(
             label: 'Unit Price',
-            value: 'QAR ${data.priceQar.toStringAsFixed(2)}',
+            value: '$currencyCode ${data.priceQar.toStringAsFixed(2)}',
           ),
           const Divider(height: 14, color: Color(0xFFE9EDF3)),
           _metricRow(
             label: 'Offer Price',
             value: data.offerPriceQar == null
                 ? 'Auto / N/A'
-                : 'QAR ${data.offerPriceQar!.toStringAsFixed(2)}',
+                : '$currencyCode ${data.offerPriceQar!.toStringAsFixed(2)}',
           ),
         ],
       ),

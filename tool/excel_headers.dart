@@ -10,19 +10,19 @@ void main(List<String> args) {
   final bytes = file.readAsBytesSync();
   final excel = Excel.decodeBytes(bytes);
   if (excel.tables.isEmpty) {
-    print('No sheets');
+    stdout.writeln('No sheets');
     return;
   }
   final firstName = excel.tables.keys.first;
   final sheet = excel.tables[firstName]!;
-  print('Sheet: $firstName');
+  stdout.writeln('Sheet: $firstName');
   if (sheet.rows.isEmpty) {
-    print('No rows');
+    stdout.writeln('No rows');
     return;
   }
   final row = sheet.rows.first;
   for (var i = 0; i < row.length; i++) {
     final v = row[i]?.value?.toString() ?? '';
-    print('$i: $v');
+    stdout.writeln('$i: $v');
   }
 }

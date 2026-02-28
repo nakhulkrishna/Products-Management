@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import 'package:products_catelogs/core/constants/firestore_collections.dart';
+import 'package:products_catelogs/features/auth/application/auth_providers.dart';
 import 'package:products_catelogs/features/products/data/repositories/products_repository.dart';
 import 'package:products_catelogs/features/products/presentation/widgets/add_edit_product_form_view.dart';
 import 'package:products_catelogs/features/products/presentation/widgets/bulk_upload_products_view.dart';
@@ -79,32 +81,32 @@ class _Product {
   });
 }
 
-class ProductsTabPage extends StatefulWidget {
+class ProductsTabPage extends ConsumerStatefulWidget {
   const ProductsTabPage({super.key});
 
   @override
-  State<ProductsTabPage> createState() => _ProductsTabPageState();
+  ConsumerState<ProductsTabPage> createState() => _ProductsTabPageState();
 }
 
-class _ProductsTabPageState extends State<ProductsTabPage> {
+class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
   static const int _rowsPerPage = 13;
   final ProductsRepository _productsRepository = FirestoreProductsRepository();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   final TextEditingController _searchController = TextEditingController();
-  final NumberFormat _currency = NumberFormat.currency(
-    locale: 'en_QA',
-    symbol: 'QAR ',
-    decimalDigits: 0,
-  );
+  final ScrollController _tableHorizontalScrollController = ScrollController();
+  NumberFormat get _currency => ref
+      .read(userPreferencesProvider)
+      .currencyFormatter(decimalDigits: 0);
+  String get _currencyCode => ref.read(userPreferencesProvider).currency;
 
   String _query = '';
   _StockFilter _stockFilter = _StockFilter.all;
   _VisibilityFilter _visibilityFilter = _VisibilityFilter.all;
+  String? _categoryFilterKey;
   int _currentPage = 1;
   bool _showCategoriesScreen = false;
   bool _showAddProductForm = false;
-  bool _showBulkUpload = false;
   _Product? _editingProduct;
   _Product? _selectedProductForDetails;
   bool _isLoadingProducts = true;
@@ -172,6 +174,7 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
     _categoriesSub?.cancel();
     _ordersSub?.cancel();
     _searchController.dispose();
+    _tableHorizontalScrollController.dispose();
     super.dispose();
   }
 
@@ -207,7 +210,11 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
                 (value) => value + soldUnits,
                 ifAbsent: () => soldUnits,
               );
-              soldBase.update(code, (value) => value + qtyBase, ifAbsent: () => qtyBase);
+              soldBase.update(
+                code,
+                (value) => value + qtyBase,
+                ifAbsent: () => qtyBase,
+              );
             }
           }
           if (!mounted) return;
@@ -247,8 +254,40 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
           (_visibilityFilter == _VisibilityFilter.hiddenOnly &&
               product.isHidden);
 
-      return matchesQuery && matchesStock && matchesVisibility;
+      final matchesCategory =
+          _categoryFilterKey == null ||
+          product.category.trim().toLowerCase() == _categoryFilterKey;
+
+      return matchesQuery &&
+          matchesStock &&
+          matchesVisibility &&
+          matchesCategory;
     }).toList();
+  }
+
+  List<String> get _availableCategories {
+    final byLower = <String, String>{};
+    for (final record in _categoryRecords) {
+      final name = record.name.trim();
+      if (name.isEmpty) continue;
+      byLower.putIfAbsent(name.toLowerCase(), () => name);
+    }
+    for (final product in _products) {
+      final name = product.category.trim();
+      if (name.isEmpty) continue;
+      byLower.putIfAbsent(name.toLowerCase(), () => name);
+    }
+    final names = byLower.values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return names;
+  }
+
+  String get _selectedCategoryLabel {
+    if (_categoryFilterKey == null) return 'All Categories';
+    for (final category in _availableCategories) {
+      if (category.toLowerCase() == _categoryFilterKey) return category;
+    }
+    return _categoryFilterKey!;
   }
 
   int get _totalPages {
@@ -265,6 +304,69 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
         ? filtered.length
         : start + _rowsPerPage;
     return filtered.sublist(start, end);
+  }
+
+  Widget _buildBulkUploadView({bool inSideSheet = false}) {
+    return BulkUploadProductsView(
+      inSideSheet: inSideSheet,
+      currencyCode: _currencyCode,
+      onBack: () {
+        Navigator.of(context).pop();
+      },
+      onUpsertOne: (product) async {
+        await _productsRepository.upsertProduct(product);
+      },
+      onUpdateOne: (product) async {
+        final normalizedCode = _normalizeProductCode(product.code);
+        await _productsRepository.updateProduct(
+          product: product,
+          initialNormalizedCode: normalizedCode,
+        );
+      },
+      onCreateOne: (product) async {
+        await _productsRepository.createProduct(product);
+      },
+    );
+  }
+
+  Future<void> _openBulkUploadSideSheet() {
+    return showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Bulk Upload',
+      barrierColor: const Color(0x400F172A),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, _, __) {
+        final width = MediaQuery.of(context).size.width;
+        final sheetWidth = width > 1080 ? 460.0 : (width > 720 ? 420.0 : width);
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.white,
+            child: SafeArea(
+              child: SizedBox(
+                width: sheetWidth,
+                height: double.infinity,
+                child: _buildBulkUploadView(inSideSheet: true),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+        );
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
   }
 
   @override
@@ -290,17 +392,6 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
       );
     }
 
-    if (_showBulkUpload) {
-      return BulkUploadProductsView(
-        onBack: () {
-          setState(() => _showBulkUpload = false);
-        },
-        onUploadOne: (product) async {
-          await _productsRepository.upsertProduct(product);
-        },
-      );
-    }
-
     if (_showAddProductForm) {
       return AddEditProductFormView(
         existingNormalizedCodes: _products
@@ -319,6 +410,7 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
             ? null
             : _buildInitialDataFromProduct(_editingProduct!),
         onSave: _handleSaveProduct,
+        currencyCode: _currencyCode,
       );
     }
 
@@ -352,6 +444,7 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
         onEdit: () {
           _openEditForm(product);
         },
+        currencyCode: _currencyCode,
       );
     }
 
@@ -417,9 +510,7 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
                           });
                         },
                   icon: Icon(
-                    isAllSelected
-                        ? Icons.check_box_rounded
-                        : Icons.check_box_outline_blank_rounded,
+                    isAllSelected ? Iconsax.tick_square : Iconsax.square,
                     color: const Color(0xFF2EA8A5),
                   ),
                 ),
@@ -513,21 +604,21 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
                 onTap: () {
                   setState(() => _showCategoriesScreen = true);
                 },
-                icon: Icons.category_outlined,
+                icon: Iconsax.category,
                 label: 'Categories',
               ),
               _headerActionButton(
                 onTap: () {
-                  setState(() => _showBulkUpload = true);
+                  unawaited(_openBulkUploadSideSheet());
                 },
-                icon: Icons.upload_file_rounded,
+                icon: Iconsax.document_upload,
                 label: 'Bulk Upload',
               ),
               _headerActionButton(
                 onTap: () {
                   setState(() => _showAddProductForm = true);
                 },
-                icon: Icons.add_rounded,
+                icon: Iconsax.add,
                 label: 'Add Product',
                 highlighted: true,
               ),
@@ -567,15 +658,15 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
           onTap: () {
             setState(() => _showCategoriesScreen = true);
           },
-          icon: Icons.category_outlined,
+          icon: Iconsax.category,
           label: 'Categories',
         ),
         const SizedBox(width: 8),
         _headerActionButton(
           onTap: () {
-            setState(() => _showBulkUpload = true);
+            unawaited(_openBulkUploadSideSheet());
           },
-          icon: Icons.upload_file_rounded,
+          icon: Iconsax.document_upload,
           label: 'Bulk Upload',
         ),
         const SizedBox(width: 8),
@@ -583,7 +674,7 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
           onTap: () {
             setState(() => _showAddProductForm = true);
           },
-          icon: Icons.add_rounded,
+          icon: Iconsax.add,
           label: 'Add Product',
           highlighted: true,
         ),
@@ -642,7 +733,7 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
       },
       decoration: InputDecoration(
         hintText: 'Search products',
-        prefixIcon: const Icon(Icons.search_rounded),
+        prefixIcon: const Icon(Iconsax.search_normal),
         fillColor: const Color(0xFFFFFFFF),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -688,31 +779,67 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
             case 'vis_hidden':
               _visibilityFilter = _VisibilityFilter.hiddenOnly;
               break;
+            case 'cat_all':
+              _categoryFilterKey = null;
+              break;
+            default:
+              if (value.startsWith('cat:')) {
+                _categoryFilterKey = value.substring(4);
+              }
+              break;
           }
           _currentPage = 1;
         });
       },
-      itemBuilder: (context) => const [
-        PopupMenuItem<String>(
-          enabled: false,
-          child: Text('Stock', style: TextStyle(fontWeight: FontWeight.w700)),
-        ),
-        PopupMenuItem(value: 'stock_all', child: Text('All Statuses')),
-        PopupMenuItem(value: 'stock_in', child: Text('In Stock')),
-        PopupMenuItem(value: 'stock_low', child: Text('Low Stock')),
-        PopupMenuItem(value: 'stock_out', child: Text('Sold Out')),
-        PopupMenuDivider(),
-        PopupMenuItem<String>(
-          enabled: false,
-          child: Text(
-            'Visibility',
-            style: TextStyle(fontWeight: FontWeight.w700),
+      itemBuilder: (context) {
+        final categoryItems = _availableCategories
+            .map(
+              (name) => PopupMenuItem<String>(
+                value: 'cat:${name.toLowerCase()}',
+                child: Text(name),
+              ),
+            )
+            .toList();
+        return [
+          const PopupMenuItem<String>(
+            enabled: false,
+            child: Text('Stock', style: TextStyle(fontWeight: FontWeight.w700)),
           ),
-        ),
-        PopupMenuItem(value: 'vis_all', child: Text('All Products')),
-        PopupMenuItem(value: 'vis_visible', child: Text('Visible Only')),
-        PopupMenuItem(value: 'vis_hidden', child: Text('Hidden Only')),
-      ],
+          const PopupMenuItem(value: 'stock_all', child: Text('All Statuses')),
+          const PopupMenuItem(value: 'stock_in', child: Text('In Stock')),
+          const PopupMenuItem(value: 'stock_low', child: Text('Low Stock')),
+          const PopupMenuItem(value: 'stock_out', child: Text('Sold Out')),
+          const PopupMenuDivider(),
+          const PopupMenuItem<String>(
+            enabled: false,
+            child: Text(
+              'Visibility',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          const PopupMenuItem(value: 'vis_all', child: Text('All Products')),
+          const PopupMenuItem(
+            value: 'vis_visible',
+            child: Text('Visible Only'),
+          ),
+          const PopupMenuItem(value: 'vis_hidden', child: Text('Hidden Only')),
+          const PopupMenuDivider(),
+          const PopupMenuItem<String>(
+            enabled: false,
+            child: Text(
+              'Category',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          const PopupMenuItem(value: 'cat_all', child: Text('All Categories')),
+          if (categoryItems.isEmpty)
+            const PopupMenuItem<String>(
+              enabled: false,
+              child: Text('No categories'),
+            ),
+          ...categoryItems,
+        ];
+      },
       child: Container(
         height: 48,
         padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -724,7 +851,7 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.tune_rounded, size: 18),
+            const Icon(Iconsax.filter4, size: 18),
             const SizedBox(width: 8),
             Text(switch (_stockFilter) {
               _StockFilter.all => 'All Status',
@@ -740,8 +867,12 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
               _VisibilityFilter.visibleOnly => 'Visible',
               _VisibilityFilter.hiddenOnly => 'Hidden',
             }),
+            const SizedBox(width: 6),
+            const Text('•', style: TextStyle(color: Color(0xFF9CA3AF))),
+            const SizedBox(width: 6),
+            Text(_selectedCategoryLabel),
             const SizedBox(width: 8),
-            const Icon(Icons.keyboard_arrow_down_rounded),
+            const Icon(Iconsax.arrow_down_1),
           ],
         ),
       ),
@@ -749,52 +880,57 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
   }
 
   Widget _buildDesktopTable(List<_Product> products, double width) {
-    return Column(
-      children: [
-        _buildTableHeader(width),
-        const Divider(height: 1, color: Color(0xFFE8EBF0)),
-        Expanded(
-          child: Scrollbar(
-            thumbVisibility: true,
-            child: ListView.separated(
-              itemCount: products.length,
-              separatorBuilder: (_, __) =>
-                  const Divider(height: 1, color: Color(0xFFE8EBF0)),
-              itemBuilder: (context, index) {
-                final product = products[index];
-                final selected = _selectedIds.contains(product.id);
-                return _buildTableRow(product, selected, width);
-              },
-            ),
+    return Scrollbar(
+      controller: _tableHorizontalScrollController,
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        controller: _tableHorizontalScrollController,
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: width,
+          child: Column(
+            children: [
+              _buildTableHeader(width),
+              const Divider(height: 1, color: Color(0xFFE8EBF0)),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: products.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: Color(0xFFE8EBF0)),
+                  itemBuilder: (context, index) {
+                    final product = products[index];
+                    final selected = _selectedIds.contains(product.id);
+                    return _buildTableRow(product, selected, width);
+                  },
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildTableHeader(double width) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Container(
-        width: width,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        color: const Color(0xFFF8FAFC),
-        child: const Row(
-          children: [
-            SizedBox(width: 44),
-            _HeaderCell(width: 124, text: 'Product ID'),
-            _HeaderCell(width: 238, text: 'Product Name'),
-            _HeaderCell(width: 168, text: 'Categories'),
-            _HeaderCell(width: 158, text: 'Performance'),
-            _HeaderCell(width: 120, text: 'Conversion'),
-            _HeaderCell(width: 198, text: 'Linked Marketing'),
-            _HeaderCell(width: 120, text: 'Price (QAR)'),
-            _HeaderCell(width: 96, text: 'Sales'),
-            _HeaderCell(width: 138, text: 'Stock Status'),
-            _HeaderCell(width: 170, text: 'Available Stock'),
-            _HeaderCell(width: 112, text: 'Action'),
-          ],
-        ),
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      color: const Color(0xFFF8FAFC),
+      child: Row(
+        children: [
+          SizedBox(width: 44),
+          _HeaderCell(width: 124, text: 'Product ID'),
+          _HeaderCell(width: 238, text: 'Product Name'),
+          _HeaderCell(width: 168, text: 'Categories'),
+          _HeaderCell(width: 158, text: 'Performance'),
+          _HeaderCell(width: 120, text: 'Conversion'),
+          _HeaderCell(width: 198, text: 'Linked Marketing'),
+          _HeaderCell(width: 120, text: 'Price ($_currencyCode)'),
+          _HeaderCell(width: 96, text: 'Sales'),
+          _HeaderCell(width: 138, text: 'Stock Status'),
+          _HeaderCell(width: 170, text: 'Available Stock'),
+          _HeaderCell(width: 112, text: 'Action'),
+        ],
       ),
     );
   }
@@ -802,119 +938,116 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
   Widget _buildTableRow(_Product product, bool selected, double width) {
     final stockStyle = _stockStyle(product.stockStatus);
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: width,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        color: selected ? const Color(0xFFF3FAFA) : Colors.white,
-        child: Row(
-          children: [
-            SizedBox(
-              width: 44,
-              child: Checkbox(
-                value: selected,
-                onChanged: (_) {
-                  setState(() {
-                    if (selected) {
-                      _selectedIds.remove(product.id);
-                    } else {
-                      _selectedIds.add(product.id);
-                    }
-                  });
-                },
-              ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      color: selected ? const Color(0xFFF3FAFA) : Colors.white,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 44,
+            child: Checkbox(
+              value: selected,
+              onChanged: (_) {
+                setState(() {
+                  if (selected) {
+                    _selectedIds.remove(product.id);
+                  } else {
+                    _selectedIds.add(product.id);
+                  }
+                });
+              },
             ),
-            _RowCell(width: 124, text: product.id),
-            SizedBox(
-              width: 238,
-              child: Row(
-                children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: product.iconBackground,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: product.primaryImageUrl == null
-                        ? Icon(product.icon, size: 17, color: product.iconColor)
-                        : Image.network(
-                            product.primaryImageUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => Icon(
-                              product.icon,
-                              size: 17,
-                              color: product.iconColor,
-                            ),
-                          ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      product.name,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF111827),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            _RowCell(width: 168, text: product.category),
-            _RowCell(width: 158, text: _performanceLabel(product.performance)),
-            _RowCell(width: 120, text: '${_resolvedConversion(product)}%'),
-            _RowCell(
-              width: 198,
-              text: product.linkedMarketing,
-              color: const Color(0xFF2488B7),
-            ),
-            _RowCell(width: 120, text: _currency.format(product.priceQar)),
-            _RowCell(width: 96, text: _resolvedSales(product).toString()),
-            SizedBox(
-              width: 138,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
+          ),
+          _RowCell(width: 124, text: product.id),
+          SizedBox(
+            width: 238,
+            child: Row(
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
                   decoration: BoxDecoration(
-                    color: stockStyle.$1,
-                    borderRadius: BorderRadius.circular(9),
-                    border: Border.all(color: stockStyle.$3),
+                    color: product.iconBackground,
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.circle, size: 7, color: stockStyle.$2),
-                      const SizedBox(width: 6),
-                      Text(
-                        stockStyle.$4,
-                        style: TextStyle(
-                          color: stockStyle.$2,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
+                  clipBehavior: Clip.antiAlias,
+                  child: product.primaryImageUrl == null
+                      ? Icon(product.icon, size: 17, color: product.iconColor)
+                      : Image.network(
+                          product.primaryImageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => Icon(
+                            product.icon,
+                            size: 17,
+                            color: product.iconColor,
+                          ),
                         ),
-                      ),
-                    ],
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    product.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF111827),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
+                ),
+              ],
+            ),
+          ),
+          _RowCell(width: 168, text: product.category),
+          _RowCell(width: 158, text: _performanceLabel(product.performance)),
+          _RowCell(width: 120, text: '${_resolvedConversion(product)}%'),
+          _RowCell(
+            width: 198,
+            text: product.linkedMarketing,
+            color: const Color(0xFF2488B7),
+          ),
+          _RowCell(width: 120, text: _currency.format(product.priceQar)),
+          _RowCell(width: 96, text: _resolvedSales(product).toString()),
+          SizedBox(
+            width: 138,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: stockStyle.$1,
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(color: stockStyle.$3),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Iconsax.record_circle, size: 7, color: stockStyle.$2),
+                    const SizedBox(width: 6),
+                    Text(
+                      stockStyle.$4,
+                      style: TextStyle(
+                        color: stockStyle.$2,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            _RowCell(
-              width: 170,
-              text:
-                  '${product.stockInBaseUnit.toStringAsFixed(2)} ${product.baseUnit}',
-            ),
-            SizedBox(width: 112, child: _buildProductActionMenu(product)),
-          ],
-        ),
+          ),
+          _RowCell(
+            width: 170,
+            text:
+                '${product.stockInBaseUnit.toStringAsFixed(2)} ${product.baseUnit}',
+          ),
+          SizedBox(width: 112, child: _buildProductActionMenu(product)),
+        ],
       ),
     );
   }
@@ -1092,7 +1225,11 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: const Color(0xFFDDE2EA)),
           ),
-          child: const Icon(Iconsax.setting, size: 18, color: Color(0xFF4B5563)),
+          child: const Icon(
+            Iconsax.setting,
+            size: 18,
+            color: Color(0xFF4B5563),
+          ),
         ),
         onSelected: (action) => _handleProductAction(product, action),
         itemBuilder: (context) => [
@@ -1165,42 +1302,11 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
   Widget _buildPaginationFooter({required int totalItems}) {
     final totalPages = _totalPages;
     final safePage = _currentPage > totalPages ? totalPages : _currentPage;
-
-    return Row(
+    final pager = Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFDDE2EA)),
-          ),
-          child: const Row(
-            children: [
-              Text(
-                'Show: 13',
-                style: TextStyle(
-                  color: Color(0xFF111827),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              SizedBox(width: 8),
-              Icon(Icons.swap_vert_rounded, size: 17),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          '$totalItems items',
-          style: const TextStyle(
-            color: Color(0xFF6B7280),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const Spacer(),
         _paginationButton(
-          icon: Icons.arrow_back_rounded,
+          icon: Iconsax.arrow_left_2,
           enabled: safePage > 1,
           onTap: () {
             setState(() {
@@ -1227,7 +1333,7 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
         ),
         const SizedBox(width: 8),
         _paginationButton(
-          icon: Icons.arrow_forward_rounded,
+          icon: Iconsax.arrow_right_2,
           enabled: safePage < totalPages,
           onTap: () {
             setState(() {
@@ -1236,6 +1342,95 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
           },
         ),
       ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 760;
+        if (isNarrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFDDE2EA)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Show: 13',
+                          style: TextStyle(
+                            color: Color(0xFF111827),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Icon(Iconsax.arrow_swap, size: 17),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    '$totalItems items',
+                    style: const TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Align(alignment: Alignment.centerRight, child: pager),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFDDE2EA)),
+              ),
+              child: const Row(
+                children: [
+                  Text(
+                    'Show: 13',
+                    style: TextStyle(
+                      color: Color(0xFF111827),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Icon(Iconsax.arrow_swap, size: 17),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '$totalItems items',
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const Spacer(),
+            pager,
+          ],
+        );
+      },
     );
   }
 
@@ -1318,6 +1513,7 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
       _query = '';
       _currentPage = 1;
       _stockFilter = _StockFilter.all;
+      _categoryFilterKey = null;
       _selectedIds.clear();
       _searchController.clear();
     });
@@ -1395,28 +1591,24 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
     switch (category) {
       case 'Laptop & PC':
         return (
-          Icons.laptop_mac_rounded,
+          Iconsax.monitor,
           const Color(0xFF0F766E),
           const Color(0xFFE6FFFA),
         );
       case 'Smartphone':
         return (
-          Icons.phone_iphone_rounded,
+          Iconsax.mobile,
           const Color(0xFF1F2937),
           const Color(0xFFE0E7FF),
         );
       case 'Accessories':
         return (
-          Icons.headphones_rounded,
+          Iconsax.airpod,
           const Color(0xFF374151),
           const Color(0xFFE5E7EB),
         );
       default:
-        return (
-          Icons.inventory_2_rounded,
-          const Color(0xFF6B7280),
-          const Color(0xFFF1F5F9),
-        );
+        return (Iconsax.box, const Color(0xFF6B7280), const Color(0xFFF1F5F9));
     }
   }
 
@@ -1562,7 +1754,10 @@ class _ProductsTabPageState extends State<ProductsTabPage> {
         );
       },
       transitionBuilder: (context, animation, _, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+        );
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),

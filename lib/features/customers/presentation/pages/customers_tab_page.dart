@@ -67,6 +67,7 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _tableHorizontalScrollController = ScrollController();
   final List<_Customer> _customers = <_Customer>[];
   final Set<String> _selectedIds = <String>{};
 
@@ -87,6 +88,7 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
   void dispose() {
     _customersSub?.cancel();
     _searchController.dispose();
+    _tableHorizontalScrollController.dispose();
     super.dispose();
   }
 
@@ -246,9 +248,7 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
                           });
                         },
                   icon: Icon(
-                    isAllSelected
-                        ? Icons.check_box_rounded
-                        : Icons.check_box_outline_blank_rounded,
+                    isAllSelected ? Iconsax.tick_square : Iconsax.square,
                     color: const Color(0xFF2EA8A5),
                   ),
                 ),
@@ -307,6 +307,38 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
   }
 
   Widget _buildHeader(bool compact) {
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Customers',
+            style: TextStyle(
+              fontSize: 30,
+              height: 1.1,
+              color: Color(0xFF111827),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Manage customer directory from backend with full CRUD operations.',
+            style: TextStyle(
+              color: Color(0xFF8A94A6),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _headerActionButton(
+            onTap: _addCustomer,
+            icon: Iconsax.add,
+            label: 'Add Customer',
+            highlighted: true,
+          ),
+        ],
+      );
+    }
+
     return Row(
       children: [
         const Expanded(
@@ -333,13 +365,12 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
             ],
           ),
         ),
-        if (!compact)
-          _headerActionButton(
-            onTap: _addCustomer,
-            icon: Icons.add_rounded,
-            label: 'Add Customer',
-            highlighted: true,
-          ),
+        _headerActionButton(
+          onTap: _addCustomer,
+          icon: Iconsax.add,
+          label: 'Add Customer',
+          highlighted: true,
+        ),
       ],
     );
   }
@@ -355,7 +386,7 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
       },
       decoration: InputDecoration(
         hintText: 'Search customers',
-        prefixIcon: const Icon(Icons.search_rounded),
+        prefixIcon: const Icon(Iconsax.search_normal),
         fillColor: const Color(0xFFFFFFFF),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -399,7 +430,7 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.tune_rounded, size: 18),
+            const Icon(Iconsax.filter4, size: 18),
             const SizedBox(width: 8),
             Text(switch (_statusFilter) {
               _CustomerFilter.all => 'All',
@@ -407,7 +438,7 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
               _CustomerFilter.inactive => 'Inactive',
             }),
             const SizedBox(width: 8),
-            const Icon(Icons.keyboard_arrow_down_rounded),
+            const Icon(Iconsax.arrow_down_1),
           ],
         ),
       ),
@@ -415,115 +446,117 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
   }
 
   Widget _buildDesktopTable(List<_Customer> customers, double width) {
-    return Column(
-      children: [
-        _buildTableHeader(width),
-        const Divider(height: 1, color: Color(0xFFE8EBF0)),
-        Expanded(
-          child: Scrollbar(
-            thumbVisibility: true,
-            child: ListView.separated(
-              itemCount: customers.length,
-              separatorBuilder: (_, __) =>
-                  const Divider(height: 1, color: Color(0xFFE8EBF0)),
-              itemBuilder: (context, index) {
-                final customer = customers[index];
-                final selected = _selectedIds.contains(customer.id);
-                return _buildTableRow(customer, selected, width);
-              },
-            ),
+    return Scrollbar(
+      controller: _tableHorizontalScrollController,
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        controller: _tableHorizontalScrollController,
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: width,
+          child: Column(
+            children: [
+              _buildTableHeader(width),
+              const Divider(height: 1, color: Color(0xFFE8EBF0)),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: customers.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: Color(0xFFE8EBF0)),
+                  itemBuilder: (context, index) {
+                    final customer = customers[index];
+                    final selected = _selectedIds.contains(customer.id);
+                    return _buildTableRow(customer, selected, width);
+                  },
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildTableHeader(double width) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Container(
-        width: width,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        color: const Color(0xFFF8FAFC),
-        child: const Row(
-          children: [
-            SizedBox(width: 44),
-            _HeaderCell(width: 130, text: 'Customer ID'),
-            _HeaderCell(width: 240, text: 'Name'),
-            _HeaderCell(width: 250, text: 'Contact'),
-            _HeaderCell(width: 140, text: 'Region'),
-            _HeaderCell(width: 340, text: 'Address'),
-            _HeaderCell(width: 130, text: 'Status'),
-            _HeaderCell(width: 120, text: 'Action'),
-          ],
-        ),
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      color: const Color(0xFFF8FAFC),
+      child: const Row(
+        children: [
+          SizedBox(width: 44),
+          _HeaderCell(width: 130, text: 'Customer ID'),
+          _HeaderCell(width: 240, text: 'Name'),
+          _HeaderCell(width: 250, text: 'Contact'),
+          _HeaderCell(width: 140, text: 'Region'),
+          _HeaderCell(width: 340, text: 'Address'),
+          _HeaderCell(width: 130, text: 'Status'),
+          _HeaderCell(width: 120, text: 'Action'),
+        ],
       ),
     );
   }
 
   Widget _buildTableRow(_Customer customer, bool selected, double width) {
     final statusStyle = _statusStyle(customer.status);
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: width,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        color: selected ? const Color(0xFFF3FAFA) : Colors.white,
-        child: Row(
-          children: [
-            SizedBox(
-              width: 44,
-              child: Checkbox(
-                value: selected,
-                onChanged: (_) {
-                  setState(() {
-                    if (selected) {
-                      _selectedIds.remove(customer.id);
-                    } else {
-                      _selectedIds.add(customer.id);
-                    }
-                  });
-                },
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      color: selected ? const Color(0xFFF3FAFA) : Colors.white,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 44,
+            child: Checkbox(
+              value: selected,
+              onChanged: (_) {
+                setState(() {
+                  if (selected) {
+                    _selectedIds.remove(customer.id);
+                  } else {
+                    _selectedIds.add(customer.id);
+                  }
+                });
+              },
+            ),
+          ),
+          _RowCell(width: 130, text: customer.id),
+          SizedBox(
+            width: 240,
+            child: Text(
+              customer.name,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF111827),
+                fontWeight: FontWeight.w600,
               ),
             ),
-            _RowCell(width: 130, text: customer.id),
-            SizedBox(
-              width: 240,
-              child: Text(
-                customer.name,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF111827),
-                  fontWeight: FontWeight.w600,
-                ),
+          ),
+          SizedBox(
+            width: 250,
+            child: Text(
+              '${customer.phone} • ${customer.email}',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF1F2937),
+                fontWeight: FontWeight.w500,
               ),
             ),
-            SizedBox(
-              width: 250,
-              child: Text(
-                '${customer.phone} • ${customer.email}',
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF1F2937),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+          ),
+          _RowCell(width: 140, text: customer.region),
+          _RowCell(width: 340, text: customer.address),
+          SizedBox(
+            width: 130,
+            child: _statusChip(
+              label: statusStyle.$4,
+              textColor: statusStyle.$2,
+              background: statusStyle.$1,
+              borderColor: statusStyle.$3,
             ),
-            _RowCell(width: 140, text: customer.region),
-            _RowCell(width: 340, text: customer.address),
-            SizedBox(
-              width: 130,
-              child: _statusChip(
-                label: statusStyle.$4,
-                textColor: statusStyle.$2,
-                background: statusStyle.$1,
-                borderColor: statusStyle.$3,
-              ),
-            ),
-            SizedBox(width: 120, child: _buildCustomerActionMenu(customer)),
-          ],
-        ),
+          ),
+          SizedBox(width: 120, child: _buildCustomerActionMenu(customer)),
+        ],
       ),
     );
   }
@@ -628,7 +661,11 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: const Color(0xFFDDE2EA)),
           ),
-          child: const Icon(Iconsax.setting, size: 18, color: Color(0xFF4B5563)),
+          child: const Icon(
+            Iconsax.setting,
+            size: 18,
+            color: Color(0xFF4B5563),
+          ),
         ),
         onSelected: (action) => _handleCustomerAction(customer, action),
         itemBuilder: (context) => [
@@ -772,7 +809,10 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
         );
       },
       transitionBuilder: (context, animation, _, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+        );
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),
@@ -820,7 +860,8 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
     final next = activate ? _CustomerStatus.active : _CustomerStatus.inactive;
     final shouldProceed = await _showConfirmSideSheet(
       title: activate ? 'Activate Customer' : 'Deactivate Customer',
-      message: '${activate ? 'Activate' : 'Deactivate'} customer ${customer.id}?',
+      message:
+          '${activate ? 'Activate' : 'Deactivate'} customer ${customer.id}?',
       confirmLabel: activate ? 'Activate' : 'Deactivate',
     );
     if (shouldProceed != true) return;
@@ -848,18 +889,11 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
   Widget _buildPaginationFooter({required int totalItems}) {
     final totalPages = _totalPages;
     final safePage = _currentPage > totalPages ? totalPages : _currentPage;
-    return Row(
+    final pager = Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          '$totalItems items',
-          style: const TextStyle(
-            color: Color(0xFF6B7280),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const Spacer(),
         _paginationButton(
-          icon: Icons.arrow_back_rounded,
+          icon: Iconsax.arrow_left_2,
           enabled: safePage > 1,
           onTap: () {
             setState(() {
@@ -886,7 +920,7 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
         ),
         const SizedBox(width: 8),
         _paginationButton(
-          icon: Icons.arrow_forward_rounded,
+          icon: Iconsax.arrow_right_2,
           enabled: safePage < totalPages,
           onTap: () {
             setState(() {
@@ -895,6 +929,42 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
           },
         ),
       ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 620;
+        if (isNarrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$totalItems items',
+                style: const TextStyle(
+                  color: Color(0xFF6B7280),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Align(alignment: Alignment.centerRight, child: pager),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Text(
+              '$totalItems items',
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const Spacer(),
+            pager,
+          ],
+        );
+      },
     );
   }
 
@@ -970,7 +1040,7 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
           const SizedBox(height: 10),
           OutlinedButton.icon(
             onPressed: _subscribeCustomers,
-            icon: const Icon(Icons.refresh_rounded),
+            icon: const Icon(Iconsax.refresh),
             label: const Text('Retry'),
           ),
         ],
@@ -1183,7 +1253,7 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
                               ),
                               IconButton(
                                 onPressed: () => Navigator.of(context).pop(),
-                                icon: const Icon(Icons.close_rounded),
+                                icon: const Icon(Iconsax.close_circle),
                               ),
                             ],
                           ),
@@ -1520,7 +1590,10 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
         );
       },
       transitionBuilder: (context, animation, _, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+        );
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),

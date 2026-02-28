@@ -8,4 +8,5 @@ class AppStrings {
   static const customersTitle = 'Customers';
   static const settingsTitle = 'Settings';
   static const staffsTitle = 'Staffs';
+  static const coreTeamTitle = 'Core Team';
 }

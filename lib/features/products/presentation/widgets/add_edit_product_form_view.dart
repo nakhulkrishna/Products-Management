@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:iconsax/iconsax.dart';
 
 class ProductFormResult {
   final String name;
@@ -96,6 +97,7 @@ class AddEditProductFormView extends StatefulWidget {
   final List<String> categories;
   final Future<void> Function(ProductFormResult) onSave;
   final VoidCallback onCancel;
+  final String currencyCode;
   final bool isEdit;
   final String? initialNormalizedCode;
   final ProductFormInitialData? initialData;
@@ -106,6 +108,7 @@ class AddEditProductFormView extends StatefulWidget {
     required this.categories,
     required this.onSave,
     required this.onCancel,
+    this.currencyCode = 'QAR',
     this.isEdit = false,
     this.initialNormalizedCode,
     this.initialData,
@@ -380,7 +383,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
                             );
                           });
                         },
-                  icon: const Icon(Icons.add_rounded),
+                  icon: const Icon(Iconsax.add),
                   label: const Text('Add Unit'),
                 ),
                 child: Column(
@@ -485,7 +488,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
                         const SizedBox(width: 10),
                         OutlinedButton.icon(
                           onPressed: _copyHyperToLocal,
-                          icon: const Icon(Icons.copy_rounded, size: 16),
+                          icon: const Icon(Iconsax.copy, size: 16),
                           label: const Text('Copy Hyper -> Local'),
                         ),
                       ],
@@ -565,7 +568,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.save_rounded),
+                        : const Icon(Iconsax.tick_circle),
                     label: Text(
                       _isSubmitting
                           ? 'Saving...'
@@ -616,7 +619,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
         if (!isNarrow)
           OutlinedButton.icon(
             onPressed: _isSubmitting ? null : widget.onCancel,
-            icon: const Icon(Icons.arrow_back_rounded),
+            icon: const Icon(Iconsax.arrow_left_2),
             label: const Text('Back to Product List'),
           ),
       ],
@@ -640,7 +643,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
             ),
             TextButton.icon(
               onPressed: _pickImages,
-              icon: const Icon(Icons.upload_rounded),
+              icon: const Icon(Iconsax.document_upload),
               label: const Text('Upload Images'),
             ),
           ],
@@ -687,7 +690,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
             fit: BoxFit.cover,
             errorBuilder: (_, _, _) => const ColoredBox(
               color: Color(0xFFF3F4F6),
-              child: Center(child: Icon(Icons.image_not_supported_rounded)),
+              child: Center(child: Icon(Iconsax.gallery_slash)),
             ),
           ),
         ),
@@ -706,7 +709,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
                 shape: BoxShape.circle,
               ),
               child: const Icon(
-                Icons.close_rounded,
+                Iconsax.close_circle,
                 size: 14,
                 color: Colors.white,
               ),
@@ -733,7 +736,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
             fit: BoxFit.cover,
             errorBuilder: (_, _, _) => const ColoredBox(
               color: Color(0xFFF3F4F6),
-              child: Center(child: Icon(Icons.image_not_supported_rounded)),
+              child: Center(child: Icon(Iconsax.gallery_slash)),
             ),
           ),
         ),
@@ -752,7 +755,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
                 shape: BoxShape.circle,
               ),
               child: const Icon(
-                Icons.close_rounded,
+                Iconsax.close_circle,
                 size: 14,
                 color: Colors.white,
               ),
@@ -821,10 +824,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
                 _ensurePricingRows();
               });
             },
-            icon: const Icon(
-              Icons.delete_outline_rounded,
-              color: Color(0xFFE65A5A),
-            ),
+            icon: const Icon(Iconsax.trash, color: Color(0xFFE65A5A)),
           ),
         ],
       ),
@@ -869,8 +869,6 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
   Widget _priceRow(String unit) {
     final pricing = _pricingByMarket[_selectedMarket]!;
     final config = pricing[unit]!;
-    final autoPrice = _autoPriceFor(_selectedMarket, unit);
-    final autoOffer = _autoOfferFor(_selectedMarket, unit);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -895,6 +893,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
             flex: 4,
             child: config.overrideEnabled
                 ? TextFormField(
+                    key: ValueKey('price_${_selectedMarket}_$unit'),
                     initialValue: config.price,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
@@ -907,13 +906,14 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
                     onEditingComplete: () => setState(() {}),
                     onTapOutside: (_) => setState(() {}),
                   )
-                : _readonlyAutoValue(autoPrice),
+                : _readonlyAutoValue(null),
           ),
           const SizedBox(width: 8),
           Expanded(
             flex: 4,
             child: config.overrideEnabled
                 ? TextFormField(
+                    key: ValueKey('offer_${_selectedMarket}_$unit'),
                     initialValue: config.offerPrice,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
@@ -926,7 +926,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
                     onEditingComplete: () => setState(() {}),
                     onTapOutside: (_) => setState(() {}),
                   )
-                : _readonlyAutoValue(autoOffer),
+                : _readonlyAutoValue(null),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -970,7 +970,9 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
         border: Border.all(color: const Color(0xFFE5EAF1)),
       ),
       child: Text(
-        value == null ? 'Auto' : 'QAR ${value.toStringAsFixed(2)}',
+        value == null
+            ? 'Auto'
+            : '${widget.currencyCode} ${value.toStringAsFixed(2)}',
         style: const TextStyle(
           color: Color(0xFF6B7280),
           fontWeight: FontWeight.w600,
@@ -1163,28 +1165,6 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
     return value == null || value <= 0 ? 1 : value;
   }
 
-  double? _autoPriceFor(String market, String unit) {
-    final base = _baseUnit;
-    if (base == null) return null;
-    if (unit == base) return null;
-    final baseConfig = _pricingByMarket[market]![base];
-    if (baseConfig == null || !baseConfig.overrideEnabled) return null;
-    final basePrice = double.tryParse(baseConfig.price.trim());
-    if (basePrice == null || basePrice <= 0) return null;
-    return basePrice * _conversionForUnit(unit);
-  }
-
-  double? _autoOfferFor(String market, String unit) {
-    final base = _baseUnit;
-    if (base == null) return null;
-    if (unit == base) return null;
-    final baseConfig = _pricingByMarket[market]![base];
-    if (baseConfig == null || !baseConfig.overrideEnabled) return null;
-    final baseOffer = double.tryParse(baseConfig.offerPrice.trim());
-    if (baseOffer == null || baseOffer <= 0) return null;
-    return baseOffer * _conversionForUnit(unit);
-  }
-
   double _computedStockInBase() {
     final stock = double.tryParse(_stockController.text.trim()) ?? 0;
     final unit = _stockUnit ?? _baseUnit;
@@ -1298,8 +1278,9 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
             overrideEnabled: config.overrideEnabled,
             manualPrice: double.tryParse(config.price.trim()),
             manualOfferPrice: double.tryParse(config.offerPrice.trim()),
-            autoPrice: _autoPriceFor(market, unit),
-            autoOfferPrice: _autoOfferFor(market, unit),
+            // Model B: do not derive unit prices from base-unit multipliers.
+            autoPrice: null,
+            autoOfferPrice: null,
           ),
         );
       }
@@ -1379,7 +1360,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
                           ),
                           IconButton(
                             onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.close_rounded, size: 20),
+                            icon: const Icon(Iconsax.close_circle, size: 20),
                           ),
                         ],
                       ),
@@ -1414,7 +1395,10 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
         );
       },
       transitionBuilder: (context, animation, _, child) {
-        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+        );
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),

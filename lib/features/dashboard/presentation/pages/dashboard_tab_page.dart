@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import 'package:products_catelogs/core/constants/firestore_collections.dart';
+import 'package:products_catelogs/features/auth/application/auth_providers.dart';
 
 enum _SalesStatus { active, inactive }
 
@@ -81,24 +83,24 @@ class _SalesmanOrderAggregate {
   DateTime? lastSaleDate;
 }
 
-class DashboardTabPage extends StatefulWidget {
+class DashboardTabPage extends ConsumerStatefulWidget {
   const DashboardTabPage({super.key});
 
   @override
-  State<DashboardTabPage> createState() => _DashboardTabPageState();
+  ConsumerState<DashboardTabPage> createState() => _DashboardTabPageState();
 }
 
-class _DashboardTabPageState extends State<DashboardTabPage> {
+class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
   static const double _minTableWidth = 1324;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final _searchController = TextEditingController();
   final _tableScrollController = ScrollController();
-  final _currency = NumberFormat.currency(
-    locale: 'en_QA',
-    symbol: 'QAR ',
-    decimalDigits: 0,
-  );
-  final _dateFormat = DateFormat('yyyy-MM-dd');
+  NumberFormat get _currency => ref
+      .read(userPreferencesProvider)
+      .currencyFormatter(decimalDigits: 0);
+  DateFormat get _dateFormat =>
+      ref.read(userPreferencesProvider).dateFormatter();
+  String get _currencyCode => ref.read(userPreferencesProvider).currency;
 
   String _query = '';
   _StatusFilter _statusFilter = _StatusFilter.all;
@@ -346,10 +348,7 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.error_outline_rounded,
-                      color: Color(0xFFB42318),
-                    ),
+                    const Icon(Iconsax.warning_2, color: Color(0xFFB42318)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -434,9 +433,7 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
                           });
                         },
                   icon: Icon(
-                    isAllSelected
-                        ? Icons.check_box_rounded
-                        : Icons.check_box_outline_blank_rounded,
+                    isAllSelected ? Iconsax.tick_square : Iconsax.square,
                     color: const Color(0xFF27A8A4),
                   ),
                 ),
@@ -466,7 +463,7 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
                 ),
                 TextButton.icon(
                   onPressed: selectedCount == 0 ? null : _deleteSelected,
-                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                  icon: const Icon(Iconsax.trash, size: 18),
                   label: const Text('Delete'),
                 ),
               ],
@@ -519,7 +516,10 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
           );
           final qty = _intOr(map['qty'] ?? map['quantity'] ?? map['count']);
           final lineRevenue = _doubleOr(
-            map['totalQar'] ?? map['lineTotal'] ?? map['amount'] ?? map['revenue'],
+            map['totalQar'] ??
+                map['lineTotal'] ??
+                map['amount'] ??
+                map['revenue'],
           );
           final growth = _doubleOr(map['growthPercent']);
           final entry = aggregates.putIfAbsent(name, () => _TrendAggregate());
@@ -531,7 +531,10 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
           }
         }
       } else {
-        final name = _stringOr(order['productName'], fallback: 'Unassigned Product');
+        final name = _stringOr(
+          order['productName'],
+          fallback: 'Unassigned Product',
+        );
         final units = _intOr(order['itemsCount']);
         final entry = aggregates.putIfAbsent(name, () => _TrendAggregate());
         entry.units += units <= 0 ? 1 : units;
@@ -566,7 +569,9 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
       name: _stringOr(data['name'], fallback: 'Unknown'),
       region: _stringOr(data['region'], fallback: ''),
       email: _stringOr(data['email'], fallback: ''),
-      status: _salesStatusFromString(_stringOr(data['status'], fallback: 'active')),
+      status: _salesStatusFromString(
+        _stringOr(data['status'], fallback: 'active'),
+      ),
       lastSaleDate: _dateOrNow(data['lastSaleDate']),
       dealsClosed: _intOr(data['dealsClosed']),
       totalSales: _doubleOr(data['totalSales']),
@@ -594,12 +599,17 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
   }
 
   String _orderStatusString(Map<String, dynamic> order) {
-    return _stringOr(order['orderStatus'], fallback: 'processing').toLowerCase();
+    return _stringOr(
+      order['orderStatus'],
+      fallback: 'processing',
+    ).toLowerCase();
   }
 
   bool _isCompletedOrder(Map<String, dynamic> order) {
     final status = _orderStatusString(order);
-    return status == 'delivered' || status == 'completed' || status == 'complete';
+    return status == 'delivered' ||
+        status == 'completed' ||
+        status == 'complete';
   }
 
   List<_Salesman> _salesmenWithLiveOrderMetrics(List<_Salesman> source) {
@@ -609,17 +619,23 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
       final salesmanName = _stringOr(order['salesmanName']);
       if (salesmanName.isEmpty) continue;
       final key = salesmanName.toLowerCase().trim();
-      final entry = aggregates.putIfAbsent(key, () => _SalesmanOrderAggregate());
+      final entry = aggregates.putIfAbsent(
+        key,
+        () => _SalesmanOrderAggregate(),
+      );
       entry.deals += 1;
       entry.totalSales += _doubleOr(order['amountQar']);
-      final orderDate = _dateOrNull(order['orderDate']) ?? _dateOrNull(order['createdAt']);
+      final orderDate =
+          _dateOrNull(order['orderDate']) ?? _dateOrNull(order['createdAt']);
       if (orderDate != null &&
-          (entry.lastSaleDate == null || orderDate.isAfter(entry.lastSaleDate!))) {
+          (entry.lastSaleDate == null ||
+              orderDate.isAfter(entry.lastSaleDate!))) {
         entry.lastSaleDate = orderDate;
       }
     }
 
-    final hasSingleSalesmanFallback = source.length == 1 && aggregates.isNotEmpty;
+    final hasSingleSalesmanFallback =
+        source.length == 1 && aggregates.isNotEmpty;
     final fallbackDeals = aggregates.values.fold<int>(0, (a, b) => a + b.deals);
     final fallbackSales = aggregates.values.fold<double>(
       0,
@@ -646,7 +662,9 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
       if (entry == null) return salesman;
       return salesman.copyWith(
         dealsClosed: entry.deals > 0 ? entry.deals : salesman.dealsClosed,
-        totalSales: entry.totalSales > 0 ? entry.totalSales : salesman.totalSales,
+        totalSales: entry.totalSales > 0
+            ? entry.totalSales
+            : salesman.totalSales,
         lastSaleDate: entry.lastSaleDate ?? salesman.lastSaleDate,
       );
     }).toList();
@@ -854,35 +872,35 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
               ),
             ),
           if (products.isNotEmpty)
-          SizedBox(
-            height: isCompact ? (isNarrow ? 280 : 126) : 88,
-            child: isNarrow
-                ? Column(
-                    children: [
-                      for (int i = 0; i < products.length; i++) ...[
-                        Expanded(
-                          child: _buildTrendingCard(
-                            product: products[i],
-                            width: double.infinity,
+            SizedBox(
+              height: isCompact ? (isNarrow ? 280 : 126) : 88,
+              child: isNarrow
+                  ? Column(
+                      children: [
+                        for (int i = 0; i < products.length; i++) ...[
+                          Expanded(
+                            child: _buildTrendingCard(
+                              product: products[i],
+                              width: double.infinity,
+                            ),
                           ),
-                        ),
-                        if (i != products.length - 1)
-                          const SizedBox(height: 8),
+                          if (i != products.length - 1)
+                            const SizedBox(height: 8),
+                        ],
                       ],
-                    ],
-                  )
-                : ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: products.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 10),
-                    itemBuilder: (context, index) {
-                      return _buildTrendingCard(
-                        product: products[index],
-                        width: isCompact ? 230 : 260,
-                      );
-                    },
-                  ),
-          ),
+                    )
+                  : ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: products.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 10),
+                      itemBuilder: (context, index) {
+                        return _buildTrendingCard(
+                          product: products[index],
+                          width: isCompact ? 230 : 260,
+                        );
+                      },
+                    ),
+            ),
         ],
       ),
     );
@@ -970,6 +988,38 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
   }
 
   Widget _buildHeader(bool compact) {
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Dashboard',
+            style: TextStyle(
+              fontSize: 30,
+              height: 1.1,
+              color: Color(0xFF111827),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Track sales performance and manage salesmen activity.',
+            style: TextStyle(
+              color: Color(0xFF8A94A6),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _headerActionButton(
+            onTap: _addSalesman,
+            icon: Iconsax.add,
+            label: 'Add Salesman',
+            highlighted: true,
+          ),
+        ],
+      );
+    }
+
     return Row(
       children: [
         const Expanded(
@@ -996,13 +1046,12 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
             ],
           ),
         ),
-        if (!compact)
-          _headerActionButton(
-            onTap: _addSalesman,
-            icon: Icons.add_rounded,
-            label: 'Add Salesman',
-            highlighted: true,
-          ),
+        _headerActionButton(
+          onTap: _addSalesman,
+          icon: Iconsax.add,
+          label: 'Add Salesman',
+          highlighted: true,
+        ),
       ],
     );
   }
@@ -1084,7 +1133,7 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
                   : 'Inactive',
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.keyboard_arrow_down_rounded),
+            const Icon(Iconsax.arrow_down_1),
           ],
         ),
       ),
@@ -1092,28 +1141,34 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
   }
 
   Widget _buildDesktopTable(List<_Salesman> filtered, double tableWidth) {
-    return Column(
-      children: [
-        _buildTableHeader(tableWidth),
-        const Divider(height: 1, color: Color(0xFFE8EBF0)),
-        Expanded(
-          child: Scrollbar(
-            thumbVisibility: true,
-            controller: _tableScrollController,
-            child: ListView.separated(
-              controller: _tableScrollController,
-              itemCount: filtered.length,
-              separatorBuilder: (_, __) =>
-                  const Divider(height: 1, color: Color(0xFFE8EBF0)),
-              itemBuilder: (context, index) {
-                final salesman = filtered[index];
-                final selected = _selectedIds.contains(salesman.id);
-                return _buildTableRow(salesman, selected, tableWidth);
-              },
-            ),
+    return Scrollbar(
+      controller: _tableScrollController,
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        controller: _tableScrollController,
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: tableWidth,
+          child: Column(
+            children: [
+              _buildTableHeader(tableWidth),
+              const Divider(height: 1, color: Color(0xFFE8EBF0)),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: Color(0xFFE8EBF0)),
+                  itemBuilder: (context, index) {
+                    final salesman = filtered[index];
+                    final selected = _selectedIds.contains(salesman.id);
+                    return _buildTableRow(salesman, selected, tableWidth);
+                  },
+                ),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -1223,21 +1278,19 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
                 children: [
                   OutlinedButton.icon(
                     onPressed: () => _editSalesman(salesman),
-                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    icon: const Icon(Iconsax.edit, size: 16),
                     label: const Text('Edit'),
                   ),
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: () => _toggleSalesmanStatus(salesman),
                     icon: const Icon(Iconsax.user_minus, size: 16),
-                    label: Text(
-                      isActive ? 'Deactivate' : 'Activate',
-                    ),
+                    label: Text(isActive ? 'Deactivate' : 'Activate'),
                   ),
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: () => _deleteSalesman(salesman),
-                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                    icon: const Icon(Iconsax.trash, size: 16),
                     label: const Text('Delete'),
                   ),
                 ],
@@ -1281,26 +1334,23 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
   }
 
   Widget _buildTableHeader(double width) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Container(
-        width: width,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        color: const Color(0xFFF8FAFC),
-        child: const Row(
-          children: [
-            SizedBox(width: 44),
-            _HeaderCell(width: 94, text: 'Salesman ID'),
-            _HeaderCell(width: 198, text: 'Salesman Name'),
-            _HeaderCell(width: 130, text: 'Region'),
-            _HeaderCell(width: 130, text: 'Status'),
-            _HeaderCell(width: 240, text: 'Contact Info'),
-            _HeaderCell(width: 140, text: 'Last Sale'),
-            _HeaderCell(width: 140, text: 'Deals Closed'),
-            _HeaderCell(width: 144, text: 'Total Sales (QAR)'),
-            SizedBox(width: 40),
-          ],
-        ),
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      color: const Color(0xFFF8FAFC),
+      child: Row(
+        children: [
+          SizedBox(width: 44),
+          _HeaderCell(width: 94, text: 'Salesman ID'),
+          _HeaderCell(width: 198, text: 'Salesman Name'),
+          _HeaderCell(width: 130, text: 'Region'),
+          _HeaderCell(width: 130, text: 'Status'),
+          _HeaderCell(width: 240, text: 'Contact Info'),
+          _HeaderCell(width: 140, text: 'Last Sale'),
+          _HeaderCell(width: 140, text: 'Deals Closed'),
+          _HeaderCell(width: 144, text: 'Total Sales ($_currencyCode)'),
+          SizedBox(width: 40),
+        ],
       ),
     );
   }
@@ -1314,182 +1364,176 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
         ? const Color(0xFF2FAD52)
         : const Color(0xFFD35D4B);
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 170),
-        width: width,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        color: selected ? const Color(0xFFF3FAFA) : Colors.white,
-        child: Row(
-          children: [
-            SizedBox(
-              width: 44,
-              child: Checkbox(
-                value: selected,
-                onChanged: (_) {
-                  setState(() {
-                    if (selected) {
-                      _selectedIds.remove(salesman.id);
-                    } else {
-                      _selectedIds.add(salesman.id);
-                    }
-                  });
-                },
-              ),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 170),
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      color: selected ? const Color(0xFFF3FAFA) : Colors.white,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 44,
+            child: Checkbox(
+              value: selected,
+              onChanged: (_) {
+                setState(() {
+                  if (selected) {
+                    _selectedIds.remove(salesman.id);
+                  } else {
+                    _selectedIds.add(salesman.id);
+                  }
+                });
+              },
             ),
-            _RowCell(width: 94, text: salesman.id),
-            SizedBox(
-              width: 198,
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 15,
-                    backgroundColor: const Color(0xFFE5EAF3),
-                    child: Text(
-                      _initialsOf(salesman.name),
-                      style: const TextStyle(
-                        fontSize: 11,
+          ),
+          _RowCell(width: 94, text: salesman.id),
+          SizedBox(
+            width: 198,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 15,
+                  backgroundColor: const Color(0xFFE5EAF3),
+                  child: Text(
+                    _initialsOf(salesman.name),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF3D4A5D),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    salesman.name,
+                    style: const TextStyle(
+                      color: Color(0xFF111827),
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _RowCell(width: 130, text: salesman.region),
+          SizedBox(
+            width: 130,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: statusBg,
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Iconsax.record_circle, size: 8, color: statusColor),
+                    const SizedBox(width: 6),
+                    Text(
+                      isActive ? 'Active' : 'Inactive',
+                      style: TextStyle(
+                        color: statusColor,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF3D4A5D),
+                        fontSize: 12,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      salesman.name,
-                      style: const TextStyle(
-                        color: Color(0xFF111827),
-                        fontWeight: FontWeight.w600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-            _RowCell(width: 130, text: salesman.region),
-            SizedBox(
-              width: 130,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusBg,
-                    borderRadius: BorderRadius.circular(30),
-                  ),
+          ),
+          _RowCell(
+            width: 240,
+            text: salesman.email,
+            color: const Color(0xFF2488B7),
+          ),
+          _RowCell(width: 140, text: _dateFormat.format(salesman.lastSaleDate)),
+          _RowCell(width: 140, text: salesman.dealsClosed.toString()),
+          _RowCell(width: 144, text: _currency.format(salesman.totalSales)),
+          SizedBox(
+            width: 48,
+            child: PopupMenuButton<String>(
+              color: Colors.white,
+              surfaceTintColor: Colors.white,
+              elevation: 8,
+              shadowColor: const Color(0x1A0F172A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              offset: const Offset(0, 42),
+              icon: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFDDE2EA)),
+                ),
+                child: const Icon(
+                  Iconsax.setting,
+                  size: 18,
+                  color: Color(0xFF4B5563),
+                ),
+              ),
+              onSelected: (value) {
+                switch (value) {
+                  case 'edit':
+                    _editSalesman(salesman);
+                    break;
+                  case 'toggle':
+                    _toggleSalesmanStatus(salesman);
+                    break;
+                  case 'delete':
+                    _deleteSalesman(salesman);
+                    break;
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'edit',
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.circle, size: 8, color: statusColor),
-                      const SizedBox(width: 6),
-                      Text(
-                        isActive ? 'Active' : 'Inactive',
-                        style: TextStyle(
-                          color: statusColor,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ),
+                      Icon(Iconsax.setting, size: 18, color: Color(0xFF374151)),
+                      SizedBox(width: 10),
+                      Text('Edit'),
                     ],
                   ),
                 ),
-              ),
-            ),
-            _RowCell(
-              width: 240,
-              text: salesman.email,
-              color: const Color(0xFF2488B7),
-            ),
-            _RowCell(
-              width: 140,
-              text: _dateFormat.format(salesman.lastSaleDate),
-            ),
-            _RowCell(width: 140, text: salesman.dealsClosed.toString()),
-            _RowCell(width: 144, text: _currency.format(salesman.totalSales)),
-            SizedBox(
-              width: 48,
-              child: PopupMenuButton<String>(
-                color: Colors.white,
-                surfaceTintColor: Colors.white,
-                elevation: 8,
-                shadowColor: const Color(0x1A0F172A),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                offset: const Offset(0, 42),
-                icon: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFDDE2EA)),
-                  ),
-                  child: const Icon(
-                    Iconsax.setting,
-                    size: 18,
-                    color: Color(0xFF4B5563),
+                PopupMenuItem(
+                  value: 'toggle',
+                  child: Row(
+                    children: [
+                      Icon(
+                        isActive ? Iconsax.user_minus : Iconsax.user_add,
+                        size: 18,
+                        color: const Color(0xFF2EA8A5),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(isActive ? 'Deactivate' : 'Activate'),
+                    ],
                   ),
                 ),
-                onSelected: (value) {
-                  switch (value) {
-                    case 'edit':
-                      _editSalesman(salesman);
-                      break;
-                    case 'toggle':
-                      _toggleSalesmanStatus(salesman);
-                      break;
-                    case 'delete':
-                      _deleteSalesman(salesman);
-                      break;
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Iconsax.setting, size: 18, color: Color(0xFF374151)),
-                        SizedBox(width: 10),
-                        Text('Edit'),
-                      ],
-                    ),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Iconsax.trash, size: 18, color: Color(0xFFE65A5A)),
+                      SizedBox(width: 10),
+                      Text('Delete'),
+                    ],
                   ),
-                  PopupMenuItem(
-                    value: 'toggle',
-                    child: Row(
-                      children: [
-                        Icon(
-                          isActive ? Iconsax.user_minus : Iconsax.user_add,
-                          size: 18,
-                          color: const Color(0xFF2EA8A5),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(isActive ? 'Deactivate' : 'Activate'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Iconsax.trash, size: 18, color: Color(0xFFE65A5A)),
-                        SizedBox(width: 10),
-                        Text('Delete'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1585,7 +1629,7 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
   Future<void> _deleteSalesman(_Salesman salesman) async {
     final confirmed = await _showRightSheet<bool>(
       title: 'Delete Salesman',
-      icon: Icons.delete_outline_rounded,
+      icon: Iconsax.trash,
       iconColor: const Color(0xFFE65A5A),
       body: Text('Delete ${salesman.name} from dashboard list?'),
       actions: [
@@ -1594,7 +1638,9 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65A5A)),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFE65A5A),
+          ),
           onPressed: () => Navigator.of(context).pop(true),
           child: const Text('Delete'),
         ),
@@ -1656,7 +1702,7 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
     if (ids.isEmpty) return;
     final confirmed = await _showRightSheet<bool>(
       title: 'Delete Selected',
-      icon: Icons.delete_sweep_outlined,
+      icon: Iconsax.trash,
       iconColor: const Color(0xFFE65A5A),
       body: Text('Delete ${ids.length} selected salesman(s)?'),
       actions: [
@@ -1665,7 +1711,9 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65A5A)),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFE65A5A),
+          ),
           onPressed: () => Navigator.of(context).pop(true),
           child: const Text('Delete'),
         ),
@@ -1675,7 +1723,9 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
     try {
       final batch = _firestore.batch();
       for (final id in ids) {
-        batch.delete(_firestore.collection(FirestoreCollections.staffSalesmen).doc(id));
+        batch.delete(
+          _firestore.collection(FirestoreCollections.staffSalesmen).doc(id),
+        );
       }
       await batch.commit();
       _selectedIds.clear();
@@ -1687,7 +1737,9 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
 
   Future<_Salesman?> _showSalesmanEditorSheet({_Salesman? existing}) async {
     final nameController = TextEditingController(text: existing?.name ?? '');
-    final regionController = TextEditingController(text: existing?.region ?? '');
+    final regionController = TextEditingController(
+      text: existing?.region ?? '',
+    );
     final emailController = TextEditingController(text: existing?.email ?? '');
     final dealsController = TextEditingController(
       text: (existing?.dealsClosed ?? 0).toString(),
@@ -1700,7 +1752,7 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
 
     return _showRightSheet<_Salesman>(
       title: existing == null ? 'Add Salesman' : 'Edit Salesman',
-      icon: existing == null ? Icons.person_add_alt_1 : Icons.edit_outlined,
+      icon: existing == null ? Iconsax.user_add : Iconsax.edit,
       body: StatefulBuilder(
         builder: (context, setSheetState) => Form(
           key: formKey,
@@ -1741,14 +1793,19 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
               TextFormField(
                 controller: salesController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Total Sales (QAR)'),
+                decoration: InputDecoration(
+                  labelText: 'Total Sales ($_currencyCode)',
+                ),
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<_SalesStatus>(
                 initialValue: status,
                 decoration: const InputDecoration(labelText: 'Status'),
                 items: const [
-                  DropdownMenuItem(value: _SalesStatus.active, child: Text('Active')),
+                  DropdownMenuItem(
+                    value: _SalesStatus.active,
+                    child: Text('Active'),
+                  ),
                   DropdownMenuItem(
                     value: _SalesStatus.inactive,
                     child: Text('Inactive'),
@@ -1786,7 +1843,7 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
             );
           },
           icon: Icon(
-            existing == null ? Icons.person_add_alt_1 : Icons.check_rounded,
+            existing == null ? Iconsax.user_add : Iconsax.tick_circle,
             size: 16,
           ),
           label: Text(existing == null ? 'Add' : 'Save'),
@@ -1827,7 +1884,9 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
           alignment: Alignment.centerRight,
           child: Material(
             color: Colors.white,
-            borderRadius: const BorderRadius.horizontal(left: Radius.circular(18)),
+            borderRadius: const BorderRadius.horizontal(
+              left: Radius.circular(18),
+            ),
             child: SizedBox(
               width: MediaQuery.of(context).size.width > 620
                   ? 520
@@ -1854,7 +1913,7 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
                           ),
                           IconButton(
                             onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(Icons.close_rounded),
+                            icon: const Icon(Iconsax.close_circle),
                           ),
                         ],
                       ),
@@ -1882,8 +1941,10 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
         );
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
-        final curved =
-            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),
@@ -1896,7 +1957,9 @@ class _DashboardTabPageState extends State<DashboardTabPage> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _initialsOf(String name) {
