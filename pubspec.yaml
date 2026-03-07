@@ -40,6 +40,8 @@ dependencies:
   firebase_core: ^4.0.0
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   http: ^1.5.0
   iconsax: ^0.0.8
   image: ^4.3.0

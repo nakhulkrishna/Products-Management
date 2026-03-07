@@ -34,8 +34,6 @@ class _WebShellPageState extends ConsumerState<WebShellPage> {
       SidebarTab.values.length,
       const SizedBox.shrink(),
     );
-    _loaded[0] = true;
-    _tabs[0] = _buildTab(0);
   }
 
   @override
@@ -93,6 +91,8 @@ class _WebShellPageState extends ConsumerState<WebShellPage> {
         onLogout: _logout,
         onOpenSettings: _openSettings,
         onSearchSubmitted: _handleGlobalSearch,
+        onOpenOrdersFromNotifications: _openOrdersFromNotifications,
+        onOpenCoreTeamFromNotifications: _openCoreTeamFromNotifications,
         userName: userName,
         userSubtitle: userSubtitle,
         body: IndexedStack(index: activeIndex, children: _tabs),
@@ -132,6 +132,34 @@ class _WebShellPageState extends ConsumerState<WebShellPage> {
 
   void _openSettings() {
     ref.read(sidebarTabProvider.notifier).state = SidebarTab.settings;
+  }
+
+  void _openOrdersFromNotifications() {
+    final role = ref.read(currentUserRoleProvider);
+    final profile = ref.read(userProfileProvider).value;
+    final allowedTabs = AccessControl.allowedTabs(
+      role: role,
+      permissionsRaw: profile?[AccessControl.permissionsField],
+    );
+    if (!allowedTabs.contains(SidebarTab.orders)) {
+      _showAccessDenied(SidebarTab.orders.label);
+      return;
+    }
+    ref.read(sidebarTabProvider.notifier).state = SidebarTab.orders;
+  }
+
+  void _openCoreTeamFromNotifications() {
+    final role = ref.read(currentUserRoleProvider);
+    final profile = ref.read(userProfileProvider).value;
+    final allowedTabs = AccessControl.allowedTabs(
+      role: role,
+      permissionsRaw: profile?[AccessControl.permissionsField],
+    );
+    if (!allowedTabs.contains(SidebarTab.coreTeam)) {
+      _showAccessDenied(SidebarTab.coreTeam.label);
+      return;
+    }
+    ref.read(sidebarTabProvider.notifier).state = SidebarTab.coreTeam;
   }
 
   void _handleGlobalSearch(String query) {

@@ -1,21 +1,25 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/core/access/access_control.dart';
 import 'package:products_catelogs/core/access/user_role.dart';
 import 'package:products_catelogs/core/constants/firestore_collections.dart';
+import 'package:products_catelogs/features/auth/application/auth_providers.dart';
 import 'package:products_catelogs/features/shell/domain/sidebar_tab.dart';
 
-class CoreTeamTabPage extends StatefulWidget {
+class CoreTeamTabPage extends ConsumerStatefulWidget {
   const CoreTeamTabPage({super.key});
 
   @override
-  State<CoreTeamTabPage> createState() => _CoreTeamTabPageState();
+  ConsumerState<CoreTeamTabPage> createState() => _CoreTeamTabPageState();
 }
 
-class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
+class _CoreTeamTabPageState extends ConsumerState<CoreTeamTabPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _searchController = TextEditingController();
 
@@ -23,6 +27,7 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _usersSub;
   bool _loading = true;
   String? _error;
+  String? _errorLog;
   String _query = '';
 
   @override
@@ -43,20 +48,23 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
     setState(() {
       _loading = true;
       _error = null;
+      _errorLog = null;
     });
     _usersSub = _firestore
         .collection(FirestoreCollections.users)
         .snapshots()
         .listen(
           (snapshot) {
-            final users = snapshot.docs
-                .map(_CorePanelUser.fromDoc)
-                .whereType<_CorePanelUser>()
-                .toList()
-              ..sort(
-                (a, b) =>
-                    a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()),
-              );
+            final users =
+                snapshot.docs
+                    .map(_CorePanelUser.fromDoc)
+                    .whereType<_CorePanelUser>()
+                    .toList()
+                  ..sort(
+                    (a, b) => a.fullName.toLowerCase().compareTo(
+                      b.fullName.toLowerCase(),
+                    ),
+                  );
             if (!mounted) return;
             setState(() {
               _users
@@ -65,11 +73,18 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
               _loading = false;
             });
           },
-          onError: (error) {
+          onError: (Object error, StackTrace stackTrace) {
+            final errorLog = _buildErrorLog(
+              action: 'catalog_users stream subscribe',
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _logErrorToConsole(errorLog, error, stackTrace);
             if (!mounted) return;
             setState(() {
               _loading = false;
               _error = '$error';
+              _errorLog = errorLog;
             });
           },
         );
@@ -80,12 +95,13 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
     return _users.where((user) {
       return user.fullName.toLowerCase().contains(_query) ||
           user.email.toLowerCase().contains(_query) ||
-          user.role.label.toLowerCase().contains(_query);
+          _roleLabelForCoreTeam(user.role).toLowerCase().contains(_query);
     }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final canManage = ref.watch(currentUserRoleProvider) == AppUserRole.admin;
     final users = _filteredUsers;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,7 +117,7 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
         ),
         const SizedBox(height: 4),
         const Text(
-          'Manage admin panel users, roles, and module permissions.',
+          'List and manage Super Admin and assisting admin-panel users.',
           style: TextStyle(
             color: Color(0xFF8A94A6),
             fontWeight: FontWeight.w500,
@@ -110,7 +126,8 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
         const SizedBox(height: 12),
         TextField(
           controller: _searchController,
-          onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
+          onChanged: (value) =>
+              setState(() => _query = value.trim().toLowerCase()),
           decoration: InputDecoration(
             hintText: 'Search users',
             prefixIcon: const Icon(Iconsax.search_normal),
@@ -122,6 +139,25 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
           ),
         ),
         const SizedBox(height: 12),
+        if (!canManage) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF7ED),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFFED7AA)),
+            ),
+            child: const Text(
+              'Only admins can manage users in Core Team. You have view-only access.',
+              style: TextStyle(
+                color: Color(0xFF9A3412),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         Expanded(
           child: Container(
             decoration: BoxDecoration(
@@ -133,13 +169,36 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
                 ? Center(
-                    child: Text(
-                      _error!,
-                      style: const TextStyle(color: Color(0xFFB42318)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _error!,
+                              style: const TextStyle(color: Color(0xFFB42318)),
+                            ),
+                            if ((_errorLog ?? '').isNotEmpty) ...[
+                              const SizedBox(height: 10),
+                              SelectableText(
+                                _errorLog!,
+                                style: const TextStyle(
+                                  color: Color(0xFF6B7280),
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
                   )
                 : users.isEmpty
-                ? const Center(child: Text('No admin panel users found.'))
+                ? const Center(
+                    child: Text('No Super Admin or assisting users found.'),
+                  )
                 : ListView.separated(
                     padding: const EdgeInsets.all(12),
                     itemCount: users.length,
@@ -147,7 +206,7 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
                         const Divider(height: 1, color: Color(0xFFE8EBF0)),
                     itemBuilder: (context, index) {
                       final user = users[index];
-                      return _userRow(user);
+                      return _userRow(user, canManage: canManage);
                     },
                   ),
           ),
@@ -156,7 +215,7 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
     );
   }
 
-  Widget _userRow(_CorePanelUser user) {
+  Widget _userRow(_CorePanelUser user, {required bool canManage}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -189,44 +248,81 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
               ],
             ),
           ),
-          _chip(user.role.label, const Color(0xFFEAF4FF), const Color(0xFF2277B8)),
+          _chip(
+            _roleLabelForCoreTeam(user.role),
+            const Color(0xFFEAF4FF),
+            const Color(0xFF2277B8),
+          ),
           const SizedBox(width: 8),
+          if (user.approvalStatus != 'approved') ...[
+            _chip(
+              user.approvalStatus == 'pending'
+                  ? 'Pending Approval'
+                  : 'Unapproved',
+              const Color(0xFFFFF4E5),
+              const Color(0xFFB54708),
+            ),
+            const SizedBox(width: 8),
+          ],
           _chip(
             user.isActive ? 'Active' : 'Inactive',
             user.isActive ? const Color(0xFFEFFAF3) : const Color(0xFFFFEEF0),
             user.isActive ? const Color(0xFF0F9D58) : const Color(0xFFC62828),
           ),
-          const SizedBox(width: 8),
-          PopupMenuButton<String>(
-            color: Colors.white,
-            surfaceTintColor: Colors.white,
-            onSelected: (value) async {
-              if (value == 'edit') {
-                await _editUserAccess(user);
-                return;
-              }
-              if (value == 'delete') {
-                await _confirmDeleteUser(user);
-                return;
-              }
-              await _toggleUserActive(user);
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(
-                value: 'edit',
-                child: Text('Edit Role & Permissions'),
-              ),
-              PopupMenuItem(
-                value: 'toggle',
-                child: Text(user.isActive ? 'Deactivate User' : 'Activate User'),
-              ),
-              const PopupMenuItem(
-                value: 'delete',
-                child: Text('Delete User'),
-              ),
-            ],
-            child: const Icon(Iconsax.setting, color: Color(0xFF4B5563)),
-          ),
+          if (canManage) ...[
+            const SizedBox(width: 8),
+            PopupMenuButton<String>(
+              color: Colors.white,
+              surfaceTintColor: Colors.white,
+              onSelected: (value) async {
+                if (value == 'edit') {
+                  await _editUserAccess(user);
+                  return;
+                }
+                if (value == 'approve') {
+                  await _approveUser(user);
+                  return;
+                }
+                if (value == 'delete') {
+                  await _confirmDeleteUser(user);
+                  return;
+                }
+                await _toggleUserActive(user);
+              },
+              itemBuilder: (_) {
+                final items = <PopupMenuEntry<String>>[
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child: Text('Edit Role & Permissions'),
+                  ),
+                ];
+                if (user.approvalStatus != 'approved') {
+                  items.add(
+                    const PopupMenuItem(
+                      value: 'approve',
+                      child: Text('Approve User'),
+                    ),
+                  );
+                }
+                items.add(
+                  PopupMenuItem(
+                    value: 'toggle',
+                    child: Text(
+                      user.isActive ? 'Deactivate User' : 'Activate User',
+                    ),
+                  ),
+                );
+                items.add(
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Text('Delete User'),
+                  ),
+                );
+                return items;
+              },
+              child: const Icon(Iconsax.setting, color: Color(0xFF4B5563)),
+            ),
+          ],
         ],
       ),
     );
@@ -241,21 +337,24 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
       ),
       child: Text(
         label,
-        style: TextStyle(
-          color: fg,
-          fontWeight: FontWeight.w700,
-          fontSize: 12,
-        ),
+        style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 12),
       ),
     );
   }
 
   Future<void> _toggleUserActive(_CorePanelUser user) async {
+    if (!_ensureAdminAccess()) return;
     try {
-      await _firestore.collection(FirestoreCollections.users).doc(user.uid).set({
-        'isActive': !user.isActive,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      final nextActive = !user.isActive;
+      await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(user.uid)
+          .set({
+            'isActive': nextActive,
+            if (nextActive) 'approvalStatus': 'approved',
+            if (nextActive) 'approvedAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -272,7 +371,32 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
     }
   }
 
+  Future<void> _approveUser(_CorePanelUser user) async {
+    if (!_ensureAdminAccess()) return;
+    try {
+      await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(user.uid)
+          .set({
+            'approvalStatus': 'approved',
+            'isActive': true,
+            'approvedAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${user.fullName} approved.')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to approve user: $error')));
+    }
+  }
+
   Future<void> _confirmDeleteUser(_CorePanelUser user) async {
+    if (!_ensureAdminAccess()) return;
     final shouldDelete = await _showSideSheet<bool>(
       title: 'Delete User',
       body: Text(
@@ -285,7 +409,9 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(true),
-          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFC62828)),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFC62828),
+          ),
           child: const Text('Delete'),
         ),
       ],
@@ -293,20 +419,24 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
 
     if (shouldDelete != true) return;
     try {
-      await _firestore.collection(FirestoreCollections.users).doc(user.uid).delete();
+      await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(user.uid)
+          .delete();
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('${user.fullName} deleted.')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to delete user: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to delete user: $error')));
     }
   }
 
   Future<void> _editUserAccess(_CorePanelUser user) async {
+    if (!_ensureAdminAccess()) return;
     final role = ValueNotifier<AppUserRole>(user.role);
     final permissionMap = ValueNotifier<Map<String, bool>>(
       Map<String, bool>.from(user.permissions),
@@ -327,11 +457,15 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
                   DropdownButtonFormField<AppUserRole>(
                     initialValue: selectedRole,
                     decoration: const InputDecoration(labelText: 'Role'),
-                    items: const [AppUserRole.admin, AppUserRole.developer]
+                    items: const [
+                          AppUserRole.developer,
+                          AppUserRole.admin,
+                          AppUserRole.staff,
+                        ]
                         .map(
                           (entry) => DropdownMenuItem(
                             value: entry,
-                            child: Text(entry.label),
+                            child: Text(_roleLabelForCoreTeam(entry)),
                           ),
                         )
                         .toList(),
@@ -391,11 +525,14 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
 
     if (saved != true) return;
     try {
-      await _firestore.collection(FirestoreCollections.users).doc(user.uid).set({
-        'role': updatedRole.firestoreValue,
-        AccessControl.permissionsField: updatedPermissions,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(user.uid)
+          .set({
+            'role': updatedRole.firestoreValue,
+            AccessControl.permissionsField: updatedPermissions,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('User permissions updated.')),
@@ -406,6 +543,23 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
         SnackBar(content: Text('Failed to save permissions: $error')),
       );
     }
+  }
+
+  bool _ensureAdminAccess() {
+    if (ref.read(currentUserRoleProvider) == AppUserRole.admin) {
+      return true;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Only admins can manage Core Team users.'),
+      ),
+    );
+    return false;
+  }
+
+  String _roleLabelForCoreTeam(AppUserRole role) {
+    if (role == AppUserRole.developer) return 'Super Admin';
+    return role.label;
   }
 
   Future<T?> _showSideSheet<T>({
@@ -495,6 +649,46 @@ class _CoreTeamTabPageState extends State<CoreTeamTabPage> {
       },
     );
   }
+
+  String _buildErrorLog({
+    required String action,
+    required Object error,
+    required StackTrace stackTrace,
+  }) {
+    final now = DateTime.now().toIso8601String();
+    final firebaseError = error is FirebaseException ? error : null;
+    final authUser = ref.read(authStateProvider).value;
+    final profile = ref.read(userProfileProvider).value;
+    final rawRole = (profile?['role'] ?? '').toString();
+
+    return '''
+[CoreTeam Error]
+time: $now
+action: $action
+firebase_code: ${firebaseError?.code ?? 'n/a'}
+firebase_plugin: ${firebaseError?.plugin ?? 'n/a'}
+message: ${firebaseError?.message ?? error}
+auth_uid: ${authUser?.uid ?? 'n/a'}
+auth_email: ${authUser?.email ?? 'n/a'}
+profile_doc_id: ${(profile?['_docId'] ?? 'n/a').toString()}
+profile_role: $rawRole
+stacktrace:
+$stackTrace
+''';
+  }
+
+  void _logErrorToConsole(String errorLog, Object error, StackTrace stackTrace) {
+    developer.log(
+      errorLog,
+      name: 'CoreTeamTabPage',
+      error: error,
+      stackTrace: stackTrace,
+      level: 1000,
+    );
+    print('========== CORE TEAM ERROR START ==========');
+    print(errorLog);
+    print('=========== CORE TEAM ERROR END ===========');
+  }
 }
 
 class _CorePanelUser {
@@ -503,6 +697,7 @@ class _CorePanelUser {
   final String email;
   final AppUserRole role;
   final bool isActive;
+  final String approvalStatus;
   final Map<String, bool> permissions;
 
   const _CorePanelUser({
@@ -511,17 +706,48 @@ class _CorePanelUser {
     required this.email,
     required this.role,
     required this.isActive,
+    required this.approvalStatus,
     required this.permissions,
   });
 
   static _CorePanelUser? fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
     if (data == null) return null;
+    final rawRole = (data['role'] as String? ?? '').trim().toLowerCase();
+    final rawRequestedRole =
+        (data['requestedRole'] as String? ?? '').trim().toLowerCase();
+    final isSalesman =
+        rawRole.contains('sales') ||
+        rawRequestedRole.contains('sales');
+    if (isSalesman) {
+      return null;
+    }
+
+    final isCoreTeamRole =
+        rawRole.contains('admin') ||
+        rawRole.contains('manager') ||
+        rawRole.contains('developer') ||
+        rawRole == 'dev' ||
+        rawRole.contains('staff') ||
+        rawRequestedRole.contains('admin') ||
+        rawRequestedRole.contains('manager') ||
+        rawRequestedRole.contains('developer') ||
+        rawRequestedRole == 'dev' ||
+        rawRequestedRole.contains('staff');
+    if (!isCoreTeamRole) {
+      return null;
+    }
+
     final role = appUserRoleFromRaw(data['role']);
     final defaultPermissions = AccessControl.defaultPermissionsForRole(role);
     final parsedPermissions = AccessControl.parsePermissions(
       data[AccessControl.permissionsField],
     );
+
+    final isActive = data['isActive'] is bool ? data['isActive'] as bool : true;
+    final approvalStatus =
+        (data['approvalStatus'] as String?)?.trim().toLowerCase() ??
+        (isActive ? 'approved' : 'pending');
 
     return _CorePanelUser(
       uid: doc.id,
@@ -532,11 +758,9 @@ class _CorePanelUser {
           ? (data['email'] as String).trim()
           : 'No email',
       role: role,
-      isActive: data['isActive'] is bool ? data['isActive'] as bool : true,
-      permissions: {
-        ...defaultPermissions,
-        ...parsedPermissions,
-      },
+      isActive: isActive,
+      approvalStatus: approvalStatus,
+      permissions: {...defaultPermissions, ...parsedPermissions},
     );
   }
 }

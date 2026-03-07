@@ -28,7 +28,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   bool _isExportingReport = false;
   String _whatsAppOrderNumber = '+97455001122';
 
-  final bool _twoFactorEnabled = false;
   bool _deactivated = false;
 
   String _currency = 'QAR';
@@ -45,23 +44,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   Map<String, bool> _permissions = AccessControl.defaultPermissionsForRole(
     AppUserRole.admin,
   );
-
-  final List<_SessionInfo> _sessions = [
-    const _SessionInfo(
-      id: 's1',
-      device: 'Chrome on macOS',
-      location: 'Doha',
-      isCurrent: true,
-      lastActive: 'Now',
-    ),
-    const _SessionInfo(
-      id: 's2',
-      device: 'Safari on iPhone',
-      location: 'Doha',
-      isCurrent: false,
-      lastActive: '2 hours ago',
-    ),
-  ];
 
   @override
   void initState() {
@@ -92,6 +74,8 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
       _currency = _valueOr(data['currency'], fallback: _currency);
       _language = _valueOr(data['language'], fallback: _language);
       _timezone = _valueOr(data['timezone'], fallback: _timezone);
+      final active = data['isActive'] is bool ? data['isActive'] as bool : true;
+      _deactivated = !active;
       final role = appUserRoleFromRaw(_role);
       _permissions = {
         ...AccessControl.defaultPermissionsForRole(role),
@@ -365,19 +349,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
       title: 'Security',
       subtitle: 'Protect your account and control active sessions.',
       children: [
-        _settingRow(
-          icon: Iconsax.shield_tick,
-          title: 'Two-Factor Authentication',
-          subtitle: 'Currently unavailable. Coming soon.',
-          trailing: Switch(
-            value: _twoFactorEnabled,
-            onChanged: (_) {
-              _toast(
-                'Two-Factor Authentication is currently unavailable. Coming soon.',
-              );
-            },
-          ),
-        ),
         _settingRow(
           icon: Iconsax.password_check,
           title: 'Reset Password',
@@ -726,15 +697,12 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   }
 
   String get _sessionSubtitle {
-    final otherCount = _sessions.where((e) => !e.isCurrent).length;
-    if (otherCount == 0) return 'Only current browser session is active';
-    return '$otherCount other session(s) active';
+    return 'Sign out this device. Global revoke needs backend support.';
   }
 
   Future<void> _editProfile() async {
     final fullNameController = TextEditingController(text: _fullName);
     final emailController = TextEditingController(text: _email);
-    var selectedRole = appUserRoleFromRaw(_role);
     final phoneController = TextEditingController(text: _phone);
     final regionController = TextEditingController(text: _region);
     final departmentController = TextEditingController(text: _department);
@@ -759,23 +727,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
               decoration: const InputDecoration(labelText: 'Email'),
               validator: (value) =>
                   (value ?? '').trim().isEmpty ? 'Required' : null,
-            ),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<AppUserRole>(
-              initialValue: selectedRole,
-              decoration: const InputDecoration(labelText: 'Role'),
-              items: AppUserRole.values
-                  .map(
-                    (role) => DropdownMenuItem<AppUserRole>(
-                      value: role,
-                      child: Text(role.label),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (role) {
-                if (role == null) return;
-                selectedRole = role;
-              },
             ),
             const SizedBox(height: 8),
             TextFormField(
@@ -807,7 +758,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             setState(() {
               _fullName = fullNameController.text.trim();
               _email = emailController.text.trim();
-              _role = selectedRole.firestoreValue;
               _phone = phoneController.text.trim();
               _region = regionController.text.trim();
               _department = departmentController.text.trim();
@@ -839,7 +789,15 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         ),
       ],
     );
-    if (shouldSend == true) _toast('Password reset link sent');
+    if (shouldSend != true) return;
+    try {
+      await _auth.sendPasswordResetEmail(email: _email.trim());
+      _toast('Password reset link sent to $_email');
+    } on FirebaseAuthException catch (error) {
+      _toast('Failed to send reset link: ${error.message ?? error.code}');
+    } catch (error) {
+      _toast('Failed to send reset link: $error');
+    }
   }
 
   Future<void> _managePermissions() async {
@@ -877,7 +835,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                 ..clear()
                 ..addAll(localPermissions);
             });
-            final ok = await _saveUserProfile();
+            final ok = await _saveUserProfile(includePermissions: true);
             if (!mounted) return;
             navigator.pop(ok);
           },
@@ -889,57 +847,38 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   }
 
   Future<void> _manageSessions() async {
-    final saved = await _showSideSheet<bool>(
-      title: 'Active Sessions',
-      body: StatefulBuilder(
-        builder: (context, setDialogState) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: _sessions.map((session) {
-              return ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  session.isCurrent ? Iconsax.monitor : Iconsax.mobile,
-                ),
-                title: Text(session.device),
-                subtitle: Text('${session.location} • ${session.lastActive}'),
-                trailing: session.isCurrent
-                    ? const Text('Current')
-                    : TextButton(
-                        onPressed: () {
-                          setDialogState(() {
-                            _sessions.removeWhere((e) => e.id == session.id);
-                          });
-                        },
-                        child: const Text('Revoke'),
-                      ),
-              );
-            }).toList(),
-          );
-        },
+    final confirmed = await _showSideSheet<bool>(
+      title: 'Manage Sessions',
+      body: const Text(
+        'Without backend session management, this will sign out only the current device.',
       ),
       actions: [
         OutlinedButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Close'),
+          child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () {
-            setState(() {});
-            Navigator.of(context).pop(true);
-          },
-          child: const Text('Apply'),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Sign Out This Device'),
         ),
       ],
     );
-    if (saved == true) _toast('Sessions updated');
+    if (confirmed != true) return;
+    final onLogout = widget.onLogout;
+    if (onLogout != null) {
+      onLogout();
+    } else {
+      await _auth.signOut();
+    }
+    if (mounted) {
+      _toast('Signed out on this device.');
+    }
   }
 
   Future<void> _toggleDeactivateAccount() async {
     if (_deactivated) {
-      setState(() => _deactivated = false);
-      _toast('Account reactivated');
+      final ok = await _setCurrentUserActive(true);
+      if (ok) _toast('Account reactivated');
       return;
     }
 
@@ -975,10 +914,41 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     );
 
     if (confirmed == true) {
-      setState(() => _deactivated = true);
-      _toast('Account deactivated');
+      final ok = await _setCurrentUserActive(false);
+      if (ok) {
+        _toast('Account deactivated');
+        final onLogout = widget.onLogout;
+        if (onLogout != null) {
+          onLogout();
+        } else {
+          await _auth.signOut();
+        }
+      }
     } else if (confirmed == false) {
       _toast('Deactivation cancelled');
+    }
+  }
+
+  Future<bool> _setCurrentUserActive(bool active) async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    try {
+      await _firestore
+          .collection(FirestoreCollections.users)
+          .doc(user.uid)
+          .set({
+            'isActive': active,
+            if (active) 'approvalStatus': 'approved',
+            if (active) 'approvedAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      if (mounted) {
+        setState(() => _deactivated = !active);
+      }
+      return true;
+    } catch (error) {
+      if (mounted) _toast('Failed to update account status: $error');
+      return false;
     }
   }
 
@@ -1056,30 +1026,30 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     if (mounted) _toast('Timezone updated to $value.');
   }
 
-  Future<bool> _saveUserProfile() async {
+  Future<bool> _saveUserProfile({bool includePermissions = false}) async {
     final user = _auth.currentUser;
     if (user == null) return false;
     if (_isSavingProfile) return false;
     setState(() => _isSavingProfile = true);
     try {
-      await _firestore
-          .collection(FirestoreCollections.users)
-          .doc(user.uid)
-          .set({
-            'uid': user.uid,
-            'fullName': _fullName,
-            'email': _email,
-            'role': _role,
-            'phone': _phone,
-            'region': _region,
-            'department': _department,
-            'whatsappOrderNumber': _whatsAppOrderNumber,
-            'currency': _currency,
-            'language': _language,
-            'timezone': _timezone,
-            AccessControl.permissionsField: _permissions,
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+      await _firestore.collection(FirestoreCollections.users).doc(user.uid).set(
+        {
+          'uid': user.uid,
+          'fullName': _fullName,
+          'email': _email,
+          'role': _role,
+          'phone': _phone,
+          'region': _region,
+          'department': _department,
+          'whatsappOrderNumber': _whatsAppOrderNumber,
+          'currency': _currency,
+          'language': _language,
+          'timezone': _timezone,
+          if (includePermissions) AccessControl.permissionsField: _permissions,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
       return true;
     } catch (error) {
       if (mounted) {
@@ -1419,20 +1389,4 @@ class _InfoChip extends StatelessWidget {
       ),
     );
   }
-}
-
-class _SessionInfo {
-  final String id;
-  final String device;
-  final String location;
-  final bool isCurrent;
-  final String lastActive;
-
-  const _SessionInfo({
-    required this.id,
-    required this.device,
-    required this.location,
-    required this.isCurrent,
-    required this.lastActive,
-  });
 }

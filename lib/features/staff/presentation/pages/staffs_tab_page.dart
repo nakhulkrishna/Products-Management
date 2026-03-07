@@ -14,6 +14,8 @@ enum _StaffFilter { all, active, onLeave, inactive }
 
 enum _SalesmanAction { view, edit, deleteImage, toggleStatus, delete }
 
+enum _SalesMarketAccess { both, hyperOnly, localOnly }
+
 class _Salesman {
   final String id;
   final String name;
@@ -26,6 +28,7 @@ class _Salesman {
   final double monthlyTargetQar;
   final double achievedSalesQar;
   final _StaffStatus status;
+  final _SalesMarketAccess salesMarketAccess;
 
   const _Salesman({
     required this.id,
@@ -39,6 +42,7 @@ class _Salesman {
     required this.monthlyTargetQar,
     required this.achievedSalesQar,
     required this.status,
+    required this.salesMarketAccess,
   });
 
   _Salesman copyWith({
@@ -54,6 +58,7 @@ class _Salesman {
     double? monthlyTargetQar,
     double? achievedSalesQar,
     _StaffStatus? status,
+    _SalesMarketAccess? salesMarketAccess,
   }) {
     return _Salesman(
       id: id ?? this.id,
@@ -67,6 +72,7 @@ class _Salesman {
       monthlyTargetQar: monthlyTargetQar ?? this.monthlyTargetQar,
       achievedSalesQar: achievedSalesQar ?? this.achievedSalesQar,
       status: status ?? this.status,
+      salesMarketAccess: salesMarketAccess ?? this.salesMarketAccess,
     );
   }
 }
@@ -83,9 +89,8 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _searchController = TextEditingController();
-  NumberFormat get _currency => ref
-      .read(userPreferencesProvider)
-      .currencyFormatter(decimalDigits: 0);
+  NumberFormat get _currency =>
+      ref.read(userPreferencesProvider).currencyFormatter(decimalDigits: 0);
   String get _currencyCode => ref.read(userPreferencesProvider).currency;
 
   String _query = '';
@@ -113,6 +118,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       monthlyTargetQar: 95000,
       achievedSalesQar: 84200,
       status: _StaffStatus.active,
+      salesMarketAccess: _SalesMarketAccess.both,
     ),
     _Salesman(
       id: 'SM-002',
@@ -126,6 +132,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       monthlyTargetQar: 90000,
       achievedSalesQar: 80120,
       status: _StaffStatus.active,
+      salesMarketAccess: _SalesMarketAccess.both,
     ),
     _Salesman(
       id: 'SM-003',
@@ -139,6 +146,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       monthlyTargetQar: 70000,
       achievedSalesQar: 56200,
       status: _StaffStatus.active,
+      salesMarketAccess: _SalesMarketAccess.both,
     ),
     _Salesman(
       id: 'SM-004',
@@ -152,6 +160,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       monthlyTargetQar: 65000,
       achievedSalesQar: 38800,
       status: _StaffStatus.onLeave,
+      salesMarketAccess: _SalesMarketAccess.both,
     ),
     _Salesman(
       id: 'SM-005',
@@ -165,6 +174,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       monthlyTargetQar: 72000,
       achievedSalesQar: 51900,
       status: _StaffStatus.active,
+      salesMarketAccess: _SalesMarketAccess.both,
     ),
     _Salesman(
       id: 'SM-006',
@@ -178,6 +188,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       monthlyTargetQar: 55000,
       achievedSalesQar: 23100,
       status: _StaffStatus.inactive,
+      salesMarketAccess: _SalesMarketAccess.both,
     ),
     _Salesman(
       id: 'SM-007',
@@ -191,6 +202,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       monthlyTargetQar: 60000,
       achievedSalesQar: 44300,
       status: _StaffStatus.active,
+      salesMarketAccess: _SalesMarketAccess.both,
     ),
     _Salesman(
       id: 'SM-008',
@@ -204,6 +216,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       monthlyTargetQar: 58000,
       achievedSalesQar: 36200,
       status: _StaffStatus.onLeave,
+      salesMarketAccess: _SalesMarketAccess.both,
     ),
     _Salesman(
       id: 'SM-009',
@@ -217,6 +230,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       monthlyTargetQar: 88000,
       achievedSalesQar: 74450,
       status: _StaffStatus.active,
+      salesMarketAccess: _SalesMarketAccess.both,
     ),
     _Salesman(
       id: 'SM-010',
@@ -230,6 +244,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       monthlyTargetQar: 56000,
       achievedSalesQar: 27500,
       status: _StaffStatus.inactive,
+      salesMarketAccess: _SalesMarketAccess.both,
     ),
     _Salesman(
       id: 'SM-011',
@@ -243,6 +258,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       monthlyTargetQar: 76000,
       achievedSalesQar: 60840,
       status: _StaffStatus.active,
+      salesMarketAccess: _SalesMarketAccess.both,
     ),
     _Salesman(
       id: 'SM-012',
@@ -256,6 +272,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       monthlyTargetQar: 62000,
       achievedSalesQar: 41920,
       status: _StaffStatus.active,
+      salesMarketAccess: _SalesMarketAccess.both,
     ),
     _Salesman(
       id: 'SM-013',
@@ -269,6 +286,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       monthlyTargetQar: 52000,
       achievedSalesQar: 19750,
       status: _StaffStatus.inactive,
+      salesMarketAccess: _SalesMarketAccess.both,
     ),
   ];
   final List<_Salesman> _salesmen = [];
@@ -412,6 +430,9 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
         field: 'achievedSalesQar',
       ),
       status: _statusFromString(_stringOr(data['status'], fallback: 'active')),
+      salesMarketAccess: _salesMarketAccessFromString(
+        _stringOr(data['salesMarketAccess'], fallback: 'both'),
+      ),
     );
   }
 
@@ -437,11 +458,98 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
 
   Future<void> _deleteSalesmenByIds(Set<String> ids) async {
     if (ids.isEmpty) return;
+    final linkedEmails = await _linkedEmailsForStaffIds(ids);
     final batch = _firestore.batch();
     for (final id in ids) {
       batch.delete(
         _firestore.collection(FirestoreCollections.staffSalesmen).doc(id),
       );
+    }
+    await batch.commit();
+    await _deleteLinkedUserProfilesByEmails(linkedEmails);
+  }
+
+  Future<Set<String>> _linkedEmailsForStaffIds(Set<String> ids) async {
+    final emails = <String>{};
+    for (final staff in _salesmen) {
+      if (!ids.contains(staff.id)) continue;
+      final normalized = staff.email.trim().toLowerCase();
+      if (normalized.isNotEmpty) {
+        emails.add(normalized);
+      }
+    }
+
+    final unresolvedIds = ids
+        .where((id) => !_salesmen.any((staff) => staff.id == id))
+        .toList();
+    if (unresolvedIds.isEmpty) return emails;
+
+    final snapshots = await Future.wait(
+      unresolvedIds.map(
+        (id) => _firestore
+            .collection(FirestoreCollections.staffSalesmen)
+            .doc(id)
+            .get(),
+      ),
+    );
+    for (final snapshot in snapshots) {
+      final data = snapshot.data();
+      if (data == null) continue;
+      final normalized = _stringOr(data['email'], fallback: '').toLowerCase();
+      if (normalized.isNotEmpty) {
+        emails.add(normalized);
+      }
+    }
+    return emails;
+  }
+
+  Future<List<DocumentReference<Map<String, dynamic>>>>
+  _linkedUserRefsByEmails(Set<String> emails) async {
+    if (emails.isEmpty) return const [];
+    final normalizedEmails = emails
+        .map((email) => email.trim().toLowerCase())
+        .where((email) => email.isNotEmpty)
+        .toSet();
+    if (normalizedEmails.isEmpty) return const [];
+
+    final usersSnapshot = await _firestore
+        .collection(FirestoreCollections.users)
+        .get();
+    final refs = <DocumentReference<Map<String, dynamic>>>[];
+    for (final doc in usersSnapshot.docs) {
+      final email = _stringOr(doc.data()['email'], fallback: '').toLowerCase();
+      if (normalizedEmails.contains(email)) {
+        refs.add(doc.reference);
+      }
+    }
+    return refs;
+  }
+
+  Future<void> _setLinkedUserAccessByEmails(
+    Set<String> emails, {
+    required bool active,
+  }) async {
+    final refs = await _linkedUserRefsByEmails(emails);
+    if (refs.isEmpty) return;
+    final batch = _firestore.batch();
+    for (final ref in refs) {
+      batch.set(ref, {
+        'isActive': active,
+        if (active) 'approvalStatus': 'approved',
+        if (active) 'approvedAt': FieldValue.serverTimestamp(),
+        if (!active) 'approvalStatus': 'deactivated',
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+    await batch.commit();
+  }
+
+  Future<void> _deleteLinkedUserProfilesByEmails(Set<String> emails) async {
+    final refs = await _linkedUserRefsByEmails(emails);
+    if (refs.isEmpty) return;
+    final batch = _firestore.batch();
+    for (final ref in refs) {
+      batch.delete(ref);
     }
     await batch.commit();
   }
@@ -459,11 +567,15 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       'region': salesman.region,
       'phone': salesman.phone,
       'email': salesman.email,
+      'emailLower': salesman.email.toLowerCase(),
       'imageUrl': salesman.imageUrl,
       'dealsClosed': salesman.dealsClosed,
       'monthlyTargetQar': salesman.monthlyTargetQar,
       'achievedSalesQar': salesman.achievedSalesQar,
       'status': _statusToString(salesman.status),
+      'salesMarketAccess': _salesMarketAccessToString(
+        salesman.salesMarketAccess,
+      ),
       'updatedAt': now,
       if (create) 'createdAt': now,
     };
@@ -534,6 +646,41 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
     }
   }
 
+  _SalesMarketAccess _salesMarketAccessFromString(String raw) {
+    switch (raw.toLowerCase()) {
+      case 'hyper_only':
+      case 'hyper':
+        return _SalesMarketAccess.hyperOnly;
+      case 'local_only':
+      case 'local':
+        return _SalesMarketAccess.localOnly;
+      default:
+        return _SalesMarketAccess.both;
+    }
+  }
+
+  String _salesMarketAccessToString(_SalesMarketAccess access) {
+    switch (access) {
+      case _SalesMarketAccess.hyperOnly:
+        return 'hyper_only';
+      case _SalesMarketAccess.localOnly:
+        return 'local_only';
+      case _SalesMarketAccess.both:
+        return 'both';
+    }
+  }
+
+  String _salesMarketAccessLabel(_SalesMarketAccess access) {
+    switch (access) {
+      case _SalesMarketAccess.hyperOnly:
+        return 'Hyper Market';
+      case _SalesMarketAccess.localOnly:
+        return 'Local Market';
+      case _SalesMarketAccess.both:
+        return 'Both Markets';
+    }
+  }
+
   List<_Salesman> get _filteredSalesmen {
     return _salesmen.where((salesman) {
       final matchesQuery =
@@ -589,7 +736,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
         final isCompact = constraints.maxWidth < 1200;
         final isNarrow = constraints.maxWidth < 880;
         final tableWidth = constraints.maxWidth < 1480
-            ? 1480.0
+            ? 1660.0
             : constraints.maxWidth;
 
         return Column(
@@ -963,6 +1110,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
           _HeaderCell(width: 210, text: 'Name'),
           _HeaderCell(width: 160, text: 'Role'),
           _HeaderCell(width: 130, text: 'Region'),
+          _HeaderCell(width: 150, text: 'Market Access'),
           _HeaderCell(width: 238, text: 'Contact'),
           _HeaderCell(width: 130, text: 'Deals Closed'),
           _HeaderCell(width: 152, text: 'Target ($_currencyCode)'),
@@ -1037,6 +1185,10 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
           ),
           _RowCell(width: 160, text: salesman.role),
           _RowCell(width: 130, text: salesman.region),
+          _RowCell(
+            width: 150,
+            text: _salesMarketAccessLabel(salesman.salesMarketAccess),
+          ),
           SizedBox(
             width: 238,
             child: Column(
@@ -1209,6 +1361,10 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
               const SizedBox(height: 10),
               _infoRow('Role', salesman.role),
               _infoRow('Region', salesman.region),
+              _infoRow(
+                'Market Access',
+                _salesMarketAccessLabel(salesman.salesMarketAccess),
+              ),
               _infoRow('Phone', salesman.phone),
               _infoRow('Email', salesman.email),
               _infoRow(
@@ -1400,6 +1556,10 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
                           _salesmanDetailRow('Name', salesman.name),
                           _salesmanDetailRow('Role', salesman.role),
                           _salesmanDetailRow('Region', salesman.region),
+                          _salesmanDetailRow(
+                            'Market Access',
+                            _salesMarketAccessLabel(salesman.salesMarketAccess),
+                          ),
                           _salesmanDetailRow('Phone', salesman.phone),
                           _salesmanDetailRow('Email', salesman.email),
                           _salesmanDetailRow(
@@ -1695,6 +1855,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
   Future<void> _deactivateSelectedStaff() async {
     final ids = Set<String>.from(_selectedIds);
     if (ids.isEmpty) return;
+    final linkedEmails = await _linkedEmailsForStaffIds(ids);
     final confirmed = await _showRightSheet<bool>(
       title: 'Deactivate Selected',
       icon: Iconsax.user_minus,
@@ -1725,6 +1886,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
         );
       }
       await batch.commit();
+      await _setLinkedUserAccessByEmails(linkedEmails, active: false);
       if (!mounted) return;
       _toast('Selected staff deactivated.');
     } catch (error) {
@@ -1766,6 +1928,10 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
             ),
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
+      await _setLinkedUserAccessByEmails(
+        {staff.email},
+        active: !shouldDeactivate,
+      );
       if (!mounted) return;
       _toast(shouldDeactivate ? 'Staff deactivated.' : 'Staff activated.');
     } catch (error) {
@@ -1967,6 +2133,8 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
       text: existing?.imageUrl ?? '',
     );
     _StaffStatus status = existing?.status ?? _StaffStatus.active;
+    _SalesMarketAccess salesMarketAccess =
+        existing?.salesMarketAccess ?? _SalesMarketAccess.both;
     final formKey = GlobalKey<FormState>();
 
     final result = await _showRightSheet<_Salesman>(
@@ -2064,6 +2232,31 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
                       decoration: const InputDecoration(labelText: 'Region'),
                       validator: (value) =>
                           (value ?? '').trim().isEmpty ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<_SalesMarketAccess>(
+                      initialValue: salesMarketAccess,
+                      decoration: const InputDecoration(
+                        labelText: 'Sales Market Access',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: _SalesMarketAccess.both,
+                          child: Text('Both Markets'),
+                        ),
+                        DropdownMenuItem(
+                          value: _SalesMarketAccess.hyperOnly,
+                          child: Text('Hyper Market only'),
+                        ),
+                        DropdownMenuItem(
+                          value: _SalesMarketAccess.localOnly,
+                          child: Text('Local Market only'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setDialogState(() => salesMarketAccess = value);
+                      },
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<_StaffStatus>(
@@ -2218,6 +2411,7 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
                 monthlyTargetQar: target,
                 achievedSalesQar: achieved,
                 status: status,
+                salesMarketAccess: salesMarketAccess,
               ),
             );
           },

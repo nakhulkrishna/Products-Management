@@ -73,14 +73,32 @@ class _TrendingProduct {
 class _TrendAggregate {
   int units = 0;
   double revenue = 0;
-  double growthTotal = 0;
-  int growthCount = 0;
+  int currentWindowUnits = 0;
+  int previousWindowUnits = 0;
 }
 
 class _SalesmanOrderAggregate {
   int deals = 0;
   double totalSales = 0;
   DateTime? lastSaleDate;
+}
+
+class _OrderLiveActivity {
+  final String orderId;
+  final String customerName;
+  final String orderStatus;
+  final String paymentStatus;
+  final double amountQar;
+  final DateTime timestamp;
+
+  const _OrderLiveActivity({
+    required this.orderId,
+    required this.customerName,
+    required this.orderStatus,
+    required this.paymentStatus,
+    required this.amountQar,
+    required this.timestamp,
+  });
 }
 
 class DashboardTabPage extends ConsumerStatefulWidget {
@@ -296,6 +314,7 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
   Widget build(BuildContext context) {
     final filtered = _salesmenWithLiveOrderMetrics(_filteredSalesmen);
     final trendingProducts = _trendingProductsFromOrders;
+    final liveActivity = _recentOrderActivity;
     final selectedCount = filtered
         .where((salesman) => _selectedIds.contains(salesman.id))
         .length;
@@ -325,175 +344,193 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
         final tableWidth = constraints.maxWidth < _minTableWidth
             ? _minTableWidth
             : constraints.maxWidth;
+        final tableHeight = (constraints.maxHeight * (isCompact ? 0.9 : 0.78))
+            .clamp(420.0, 760.0)
+            .toDouble();
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(isCompact),
-            const SizedBox(height: 12),
-            if (_loadingSalesmen || _loadingOrders)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 10),
-                child: LinearProgressIndicator(minHeight: 3),
-              ),
-            if (_salesmenError != null || _ordersError != null)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF3F2),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFF4C7C4)),
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(isCompact),
+              const SizedBox(height: 12),
+              if (_loadingSalesmen || _loadingOrders)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 10),
+                  child: LinearProgressIndicator(minHeight: 3),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(Iconsax.warning_2, color: Color(0xFFB42318)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _salesmenError != null
-                            ? 'Salesmen load failed: $_salesmenError'
-                            : 'Orders load failed: $_ordersError',
-                        style: const TextStyle(
-                          color: Color(0xFFB42318),
-                          fontWeight: FontWeight.w600,
+              if (_salesmenError != null || _ordersError != null)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF3F2),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFF4C7C4)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Iconsax.warning_2, color: Color(0xFFB42318)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _salesmenError != null
+                              ? 'Salesmen load failed: $_salesmenError'
+                              : 'Orders load failed: $_ordersError',
+                          style: const TextStyle(
+                            color: Color(0xFFB42318),
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        _subscribeSalesmen();
-                        _subscribeOrders();
-                      },
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              ),
-            if (topPerformer != null) ...[
-              _buildInsightBanner(
-                topPerformer: topPerformer,
-                isCompact: isCompact,
-              ),
-              const SizedBox(height: 12),
-            ],
-            _buildSummarySection(
-              isCompact: isCompact,
-              totalSales: totalSales,
-              totalDeals: totalDeals,
-              activeSalesmen: activeSalesmen,
-              avgDealValue: avgDealValue,
-            ),
-            const SizedBox(height: 12),
-            _buildTrendingProducts(
-              isCompact: isCompact,
-              isNarrow: isNarrow,
-              products: trendingProducts,
-            ),
-            const SizedBox(height: 12),
-            isCompact
-                ? Column(
-                    children: [
-                      _buildSearchField(),
-                      const SizedBox(height: 10),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: _buildFilterButton(),
+                      TextButton(
+                        onPressed: () {
+                          _subscribeSalesmen();
+                          _subscribeOrders();
+                        },
+                        child: const Text('Retry'),
                       ),
                     ],
-                  )
-                : Row(
-                    children: [
-                      Expanded(child: _buildSearchField()),
-                      const SizedBox(width: 10),
-                      _buildFilterButton(),
-                    ],
                   ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                IconButton(
-                  onPressed: filtered.isEmpty
-                      ? null
-                      : () {
-                          setState(() {
-                            if (isAllSelected) {
-                              for (final salesman in filtered) {
-                                _selectedIds.remove(salesman.id);
+                ),
+              if (topPerformer != null) ...[
+                _buildInsightBanner(
+                  topPerformer: topPerformer,
+                  isCompact: isCompact,
+                ),
+                const SizedBox(height: 12),
+              ],
+              _buildSummarySection(
+                isCompact: isCompact,
+                totalSales: totalSales,
+                totalDeals: totalDeals,
+                activeSalesmen: activeSalesmen,
+                avgDealValue: avgDealValue,
+              ),
+              const SizedBox(height: 12),
+              _buildTrendingProducts(
+                isCompact: isCompact,
+                isNarrow: isNarrow,
+                products: trendingProducts,
+              ),
+              const SizedBox(height: 12),
+              isCompact
+                  ? Column(
+                      children: [
+                        _buildSearchField(),
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: _buildFilterButton(),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(child: _buildSearchField()),
+                        const SizedBox(width: 10),
+                        _buildFilterButton(),
+                      ],
+                    ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: filtered.isEmpty
+                        ? null
+                        : () {
+                            setState(() {
+                              if (isAllSelected) {
+                                for (final salesman in filtered) {
+                                  _selectedIds.remove(salesman.id);
+                                }
+                              } else {
+                                for (final salesman in filtered) {
+                                  _selectedIds.add(salesman.id);
+                                }
                               }
-                            } else {
+                            });
+                          },
+                    icon: Icon(
+                      isAllSelected ? Iconsax.tick_square : Iconsax.square,
+                      color: const Color(0xFF27A8A4),
+                    ),
+                  ),
+                  Text(
+                    '$selectedCount Selected',
+                    style: const TextStyle(
+                      color: Color(0xFF27A8A4),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: filtered.isEmpty
+                        ? null
+                        : () {
+                            setState(() {
                               for (final salesman in filtered) {
                                 _selectedIds.add(salesman.id);
                               }
-                            }
-                          });
-                        },
-                  icon: Icon(
-                    isAllSelected ? Iconsax.tick_square : Iconsax.square,
-                    color: const Color(0xFF27A8A4),
+                            });
+                          },
+                    child: const Text('Select All'),
                   ),
-                ),
-                Text(
-                  '$selectedCount Selected',
-                  style: const TextStyle(
-                    color: Color(0xFF27A8A4),
-                    fontWeight: FontWeight.w600,
+                  TextButton.icon(
+                    onPressed: selectedCount == 0 ? null : _deactivateSelected,
+                    icon: const Icon(Iconsax.user_minus, size: 18),
+                    label: const Text('Deactivate'),
                   ),
-                ),
-                TextButton(
-                  onPressed: filtered.isEmpty
-                      ? null
-                      : () {
-                          setState(() {
-                            for (final salesman in filtered) {
-                              _selectedIds.add(salesman.id);
-                            }
-                          });
-                        },
-                  child: const Text('Select All'),
-                ),
-                TextButton.icon(
-                  onPressed: selectedCount == 0 ? null : _deactivateSelected,
-                  icon: const Icon(Iconsax.user_minus, size: 18),
-                  label: const Text('Deactivate'),
-                ),
-                TextButton.icon(
-                  onPressed: selectedCount == 0 ? null : _deleteSelected,
-                  icon: const Icon(Iconsax.trash, size: 18),
-                  label: const Text('Delete'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFDDE2EA)),
-                ),
-                child: _loadingSalesmen
-                    ? const Center(child: CircularProgressIndicator())
-                    : filtered.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No salesmen found.',
-                          style: TextStyle(
-                            color: Color(0xFF6B7280),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      )
-                    : isCompact
-                    ? _buildCardList(filtered)
-                    : _buildDesktopTable(filtered, tableWidth),
+                  TextButton.icon(
+                    onPressed: selectedCount == 0 ? null : _deleteSelected,
+                    icon: const Icon(Iconsax.trash, size: 18),
+                    label: const Text('Delete'),
+                  ),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 10),
+              SizedBox(
+                height: tableHeight,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFDDE2EA)),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildLiveActivityForSalesmanTable(
+                        activities: liveActivity,
+                        isCompact: isCompact,
+                      ),
+                      const Divider(height: 1, color: Color(0xFFE8EBF0)),
+                      Expanded(
+                        child: _loadingSalesmen
+                            ? const Center(child: CircularProgressIndicator())
+                            : filtered.isEmpty
+                            ? const Center(
+                                child: Text(
+                                  'No salesmen found.',
+                                  style: TextStyle(
+                                    color: Color(0xFF6B7280),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              )
+                            : isCompact
+                            ? _buildCardList(filtered)
+                            : _buildDesktopTable(filtered, tableWidth),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
+          ),
         );
       },
     );
@@ -501,10 +538,23 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
 
   List<_TrendingProduct> get _trendingProductsFromOrders {
     final aggregates = <String, _TrendAggregate>{};
+    final now = DateTime.now();
+    final currentWindowStart = now.subtract(const Duration(days: 7));
+    final previousWindowStart = now.subtract(const Duration(days: 14));
 
     for (final order in _orders) {
       if (!_isCompletedOrder(order)) continue;
       final amount = _doubleOr(order['amountQar']);
+      final orderDate =
+          _dateOrNull(order['orderDate']) ?? _dateOrNull(order['createdAt']);
+      final inCurrentWindow =
+          orderDate != null &&
+          !orderDate.isBefore(currentWindowStart) &&
+          !orderDate.isAfter(now);
+      final inPreviousWindow =
+          orderDate != null &&
+          !orderDate.isBefore(previousWindowStart) &&
+          orderDate.isBefore(currentWindowStart);
       final rawItems = order['items'];
       if (rawItems is List && rawItems.isNotEmpty) {
         for (final item in rawItems) {
@@ -521,13 +571,14 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
                 map['amount'] ??
                 map['revenue'],
           );
-          final growth = _doubleOr(map['growthPercent']);
           final entry = aggregates.putIfAbsent(name, () => _TrendAggregate());
-          entry.units += qty <= 0 ? 1 : qty;
+          final resolvedQty = qty <= 0 ? 1 : qty;
+          entry.units += resolvedQty;
           entry.revenue += lineRevenue > 0 ? lineRevenue : amount;
-          if (growth != 0) {
-            entry.growthTotal += growth;
-            entry.growthCount += 1;
+          if (inCurrentWindow) {
+            entry.currentWindowUnits += resolvedQty;
+          } else if (inPreviousWindow) {
+            entry.previousWindowUnits += resolvedQty;
           }
         }
       } else {
@@ -537,16 +588,23 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
         );
         final units = _intOr(order['itemsCount']);
         final entry = aggregates.putIfAbsent(name, () => _TrendAggregate());
-        entry.units += units <= 0 ? 1 : units;
+        final resolvedUnits = units <= 0 ? 1 : units;
+        entry.units += resolvedUnits;
         entry.revenue += amount;
+        if (inCurrentWindow) {
+          entry.currentWindowUnits += resolvedUnits;
+        } else if (inPreviousWindow) {
+          entry.previousWindowUnits += resolvedUnits;
+        }
       }
     }
 
     final list = aggregates.entries.map((entry) {
       final aggregate = entry.value;
-      final growth = aggregate.growthCount == 0
-          ? 0.0
-          : aggregate.growthTotal / aggregate.growthCount;
+      final growth = _growthPercent(
+        current: aggregate.currentWindowUnits.toDouble(),
+        previous: aggregate.previousWindowUnits.toDouble(),
+      );
       return _TrendingProduct(
         name: entry.key,
         unitsSold: aggregate.units,
@@ -557,6 +615,41 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
 
     list.sort((a, b) => b.revenue.compareTo(a.revenue));
     return list.take(4).toList();
+  }
+
+  double _growthPercent({required double current, required double previous}) {
+    if (previous <= 0) {
+      if (current <= 0) return 0;
+      return 100;
+    }
+    return ((current - previous) / previous) * 100;
+  }
+
+  List<_OrderLiveActivity> get _recentOrderActivity {
+    final entries = <_OrderLiveActivity>[];
+    for (final order in _orders) {
+      final orderId = _stringOr(order['id'], fallback: '-');
+      final customerName = _stringOr(order['customerName'], fallback: 'Customer');
+      final orderStatus = _stringOr(order['orderStatus'], fallback: 'processing');
+      final paymentStatus = _stringOr(order['paymentStatus'], fallback: 'pending');
+      final amount = _doubleOr(order['amountQar']);
+      final timestamp =
+          _dateOrNull(order['orderDate']) ??
+          _dateOrNull(order['createdAt']) ??
+          DateTime.now();
+      entries.add(
+        _OrderLiveActivity(
+          orderId: orderId,
+          customerName: customerName,
+          orderStatus: orderStatus,
+          paymentStatus: paymentStatus,
+          amountQar: amount,
+          timestamp: timestamp,
+        ),
+      );
+    }
+    entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return entries.take(3).toList();
   }
 
   _Salesman? _salesmanFromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -673,6 +766,57 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
   String _stringOr(dynamic value, {String fallback = ''}) {
     if (value is String && value.trim().isNotEmpty) return value.trim();
     return fallback;
+  }
+
+  Future<List<DocumentReference<Map<String, dynamic>>>>
+  _linkedUserRefsByEmails(Set<String> emails) async {
+    if (emails.isEmpty) return const [];
+    final normalizedEmails = emails
+        .map((email) => email.trim().toLowerCase())
+        .where((email) => email.isNotEmpty)
+        .toSet();
+    if (normalizedEmails.isEmpty) return const [];
+
+    final usersSnapshot = await _firestore
+        .collection(FirestoreCollections.users)
+        .get();
+    final refs = <DocumentReference<Map<String, dynamic>>>[];
+    for (final doc in usersSnapshot.docs) {
+      final email = _stringOr(doc.data()['email'], fallback: '').toLowerCase();
+      if (normalizedEmails.contains(email)) {
+        refs.add(doc.reference);
+      }
+    }
+    return refs;
+  }
+
+  Future<void> _setLinkedUserAccessByEmails(
+    Set<String> emails, {
+    required bool active,
+  }) async {
+    final refs = await _linkedUserRefsByEmails(emails);
+    if (refs.isEmpty) return;
+    final batch = _firestore.batch();
+    for (final ref in refs) {
+      batch.set(ref, {
+        'isActive': active,
+        if (active) 'approvalStatus': 'approved',
+        if (active) 'approvedAt': FieldValue.serverTimestamp(),
+        if (!active) 'approvalStatus': 'deactivated',
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+    await batch.commit();
+  }
+
+  Future<void> _deleteLinkedUserProfilesByEmails(Set<String> emails) async {
+    final refs = await _linkedUserRefsByEmails(emails);
+    if (refs.isEmpty) return;
+    final batch = _firestore.batch();
+    for (final ref in refs) {
+      batch.delete(ref);
+    }
+    await batch.commit();
   }
 
   int _intOr(dynamic value) {
@@ -906,10 +1050,141 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
     );
   }
 
+  Widget _buildLiveActivityForSalesmanTable({
+    required List<_OrderLiveActivity> activities,
+    required bool isCompact,
+  }) {
+    final visible = activities.take(3).toList();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+      color: const Color(0xFFFAFBFC),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 3),
+            child: Icon(Iconsax.activity, size: 16, color: Color(0xFF0F766E)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'Live Activity',
+                      style: TextStyle(
+                        color: Color(0xFF111827),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF10B981),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${visible.length} recent orders',
+                      style: const TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                if (visible.isEmpty)
+                  const Text(
+                    'No recent order updates.',
+                    style: TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
+                    ),
+                  ),
+                if (visible.isNotEmpty)
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      for (final item in visible)
+                        _liveActivityChip(item: item, isCompact: isCompact),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _liveActivityChip({
+    required _OrderLiveActivity item,
+    required bool isCompact,
+  }) {
+    return Container(
+      constraints: BoxConstraints(
+        maxWidth: isCompact ? 340 : 380,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F6FA),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE4E8F0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Iconsax.flash_1, size: 12, color: Color(0xFF0F766E)),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '${item.orderId} • ${item.customerName}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF111827),
+                fontWeight: FontWeight.w600,
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTrendingCard({
     required _TrendingProduct product,
     required double width,
   }) {
+    final growth = product.growthPercent;
+    final growthPositive = growth > 0;
+    final growthNegative = growth < 0;
+    final growthColor = growthPositive
+        ? const Color(0xFF2FAD52)
+        : growthNegative
+        ? const Color(0xFFDC2626)
+        : const Color(0xFF6B7280);
+    final growthBg = growthPositive
+        ? const Color(0xFFE8F8EE)
+        : growthNegative
+        ? const Color(0xFFFEF2F2)
+        : const Color(0xFFF3F4F6);
+    final growthText = growthPositive
+        ? '+${growth.toStringAsFixed(1)}%'
+        : '${growth.toStringAsFixed(1)}%';
+
     return Container(
       width: width,
       padding: const EdgeInsets.all(10),
@@ -954,13 +1229,13 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F8EE),
+                  color: growthBg,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  '+${product.growthPercent.toStringAsFixed(1)}%',
-                  style: const TextStyle(
-                    color: Color(0xFF2FAD52),
+                  growthText,
+                  style: TextStyle(
+                    color: growthColor,
                     fontWeight: FontWeight.w700,
                     fontSize: 11,
                   ),
@@ -1590,6 +1865,7 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
 
   Future<void> _toggleSalesmanStatus(_Salesman salesman) async {
     final isActive = salesman.status == _SalesStatus.active;
+    final linkedEmails = {salesman.email};
     final confirmed = await _showRightSheet<bool>(
       title: isActive ? 'Deactivate Salesman' : 'Activate Salesman',
       icon: isActive ? Iconsax.user_minus : Iconsax.user_add,
@@ -1620,6 +1896,7 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
             ),
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
+      await _setLinkedUserAccessByEmails(linkedEmails, active: !isActive);
       _toast(isActive ? 'Salesman deactivated.' : 'Salesman activated.');
     } catch (error) {
       _toast('Failed to update status: $error');
@@ -1627,6 +1904,7 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
   }
 
   Future<void> _deleteSalesman(_Salesman salesman) async {
+    final linkedEmails = {salesman.email};
     final confirmed = await _showRightSheet<bool>(
       title: 'Delete Salesman',
       icon: Iconsax.trash,
@@ -1652,6 +1930,7 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
           .collection(FirestoreCollections.staffSalesmen)
           .doc(salesman.id)
           .delete();
+      await _deleteLinkedUserProfilesByEmails(linkedEmails);
       _selectedIds.remove(salesman.id);
       _toast('Salesman deleted.');
     } catch (error) {
@@ -1662,6 +1941,10 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
   Future<void> _deactivateSelected() async {
     final ids = Set<String>.from(_selectedIds);
     if (ids.isEmpty) return;
+    final linkedEmails = _salesmen
+        .where((salesman) => ids.contains(salesman.id))
+        .map((salesman) => salesman.email)
+        .toSet();
     final confirmed = await _showRightSheet<bool>(
       title: 'Deactivate Selected',
       icon: Iconsax.user_minus,
@@ -1691,6 +1974,7 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
         );
       }
       await batch.commit();
+      await _setLinkedUserAccessByEmails(linkedEmails, active: false);
       _toast('Selected salesmen deactivated.');
     } catch (error) {
       _toast('Failed to deactivate selected: $error');
@@ -1700,6 +1984,10 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
   Future<void> _deleteSelected() async {
     final ids = Set<String>.from(_selectedIds);
     if (ids.isEmpty) return;
+    final linkedEmails = _salesmen
+        .where((salesman) => ids.contains(salesman.id))
+        .map((salesman) => salesman.email)
+        .toSet();
     final confirmed = await _showRightSheet<bool>(
       title: 'Delete Selected',
       icon: Iconsax.trash,
@@ -1728,6 +2016,7 @@ class _DashboardTabPageState extends ConsumerState<DashboardTabPage> {
         );
       }
       await batch.commit();
+      await _deleteLinkedUserProfilesByEmails(linkedEmails);
       _selectedIds.clear();
       _toast('Selected salesmen deleted.');
     } catch (error) {

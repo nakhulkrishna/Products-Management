@@ -108,7 +108,6 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
   bool _showCategoriesScreen = false;
   bool _showAddProductForm = false;
   _Product? _editingProduct;
-  _Product? _selectedProductForDetails;
   bool _isLoadingProducts = true;
   final List<ProductCategoryRecord> _categoryRecords = [];
   final Set<String> _selectedIds = <String>{};
@@ -130,15 +129,6 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
             ..clear()
             ..addAll(records.map(_mapRecordToProduct));
           _isLoadingProducts = false;
-          if (_selectedProductForDetails != null) {
-            final selectedId = _selectedProductForDetails!.id;
-            final selectedIndex = _products.indexWhere(
-              (p) => p.id == selectedId,
-            );
-            _selectedProductForDetails = selectedIndex == -1
-                ? null
-                : _products[selectedIndex];
-          }
         });
       },
       onError: (error) {
@@ -410,40 +400,6 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
             ? null
             : _buildInitialDataFromProduct(_editingProduct!),
         onSave: _handleSaveProduct,
-        currencyCode: _currencyCode,
-      );
-    }
-
-    if (_selectedProductForDetails != null) {
-      final product = _selectedProductForDetails!;
-      final stockStyle = _stockStyle(product.stockStatus);
-      return ProductDetailsView(
-        data: ProductDetailsData(
-          id: product.id,
-          name: product.name,
-          category: product.category,
-          description: product.description,
-          baseUnit: product.baseUnit,
-          saleUnits: product.saleUnits,
-          stockInBaseUnit: product.stockInBaseUnit,
-          priceQar: product.priceQar,
-          offerPriceQar: product.offerPriceQar,
-          sales: _resolvedSales(product),
-          linkedMarketing: product.linkedMarketing,
-          stockStatusLabel: stockStyle.$4,
-          stockStatusColor: stockStyle.$2,
-          stockStatusBackground: stockStyle.$1,
-          icon: product.icon,
-          iconColor: product.iconColor,
-          iconBackground: product.iconBackground,
-          imageUrl: product.primaryImageUrl,
-        ),
-        onBack: () {
-          setState(() => _selectedProductForDetails = null);
-        },
-        onEdit: () {
-          _openEditForm(product);
-        },
         currencyCode: _currencyCode,
       );
     }
@@ -1285,7 +1241,7 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
   void _handleProductAction(_Product product, _ProductAction action) {
     switch (action) {
       case _ProductAction.view:
-        setState(() => _selectedProductForDetails = product);
+        unawaited(_openProductDetailsSideSheet(product));
         break;
       case _ProductAction.edit:
         _openEditForm(product);
@@ -1530,7 +1486,6 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
   void _openEditForm(_Product product) {
     setState(() {
       _editingProduct = product;
-      _selectedProductForDetails = null;
       _showAddProductForm = true;
     });
   }
@@ -1572,9 +1527,6 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
       await _productsRepository.deleteProduct(product.normalizedCode);
       if (!mounted) return;
       _selectedIds.remove(product.id);
-      if (_selectedProductForDetails?.id == product.id) {
-        _selectedProductForDetails = null;
-      }
       setState(() {});
       ScaffoldMessenger.of(
         context,
@@ -1747,6 +1699,84 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
                       ),
                     ),
                   ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOut,
+        );
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
+  }
+
+  Future<void> _openProductDetailsSideSheet(_Product product) {
+    final stockStyle = _stockStyle(product.stockStatus);
+    return showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Product Details',
+      barrierColor: const Color(0x400F172A),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, _, __) {
+        final width = MediaQuery.of(context).size.width;
+        final sheetWidth = width > 1400 ? 680.0 : (width > 980 ? 620.0 : width);
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: const Color(0xFFF8FAFC),
+            child: SafeArea(
+              child: SizedBox(
+                width: sheetWidth,
+                height: double.infinity,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: ProductDetailsView(
+                    data: ProductDetailsData(
+                      id: product.id,
+                      name: product.name,
+                      category: product.category,
+                      description: product.description,
+                      baseUnit: product.baseUnit,
+                      saleUnits: product.saleUnits,
+                      saleUnitConfigs: product.saleUnitConfigs,
+                      marketPricingByMarket: product.marketPricingByMarket,
+                      stockInBaseUnit: product.stockInBaseUnit,
+                      initialStockInput: product.initialStockInput,
+                      initialStockInputUnit:
+                          product.initialStockInputUnit ?? product.baseUnit,
+                      priceQar: product.priceQar,
+                      offerPriceQar: product.offerPriceQar,
+                      sales: _resolvedSales(product),
+                      linkedMarketing: product.linkedMarketing,
+                      isHidden: product.isHidden,
+                      stockStatusLabel: stockStyle.$4,
+                      stockStatusColor: stockStyle.$2,
+                      stockStatusBackground: stockStyle.$1,
+                      icon: product.icon,
+                      iconColor: product.iconColor,
+                      iconBackground: product.iconBackground,
+                      imageUrl: product.primaryImageUrl,
+                      imageUrls: product.imageUrls,
+                    ),
+                    onBack: () => Navigator.of(context).pop(),
+                    onEdit: () {
+                      Navigator.of(context).pop();
+                      _openEditForm(product);
+                    },
+                    currencyCode: _currencyCode,
+                  ),
                 ),
               ),
             ),

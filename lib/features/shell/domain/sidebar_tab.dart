@@ -6,7 +6,7 @@ enum SidebarTab {
   dashboard,
   products,
   orders,
-  customers,
+  customers, 
   staffs,
   coreTeam,
   settings,

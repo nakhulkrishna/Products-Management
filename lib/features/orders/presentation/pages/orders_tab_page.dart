@@ -17,6 +17,8 @@ enum _OrderFilter { all, delivered, processing, cancelled }
 
 enum _OrderAction { updatePaid, updateStatus, view, delete }
 
+enum _SalesMarketAccess { both, hyperOnly, localOnly }
+
 class _Order {
   final String docId;
   final String id;
@@ -59,6 +61,7 @@ class _ProductRecordLite {
   final String name;
   final double availableQtyBaseUnit;
   final String baseUnit;
+  final String marketKey;
   final List<_SaleUnitLite> saleUnits;
   final Map<String, _PriceForUnit> priceByUnitKey;
 
@@ -67,6 +70,7 @@ class _ProductRecordLite {
     required this.name,
     required this.availableQtyBaseUnit,
     required this.baseUnit,
+    required this.marketKey,
     required this.saleUnits,
     required this.priceByUnitKey,
   });
@@ -143,9 +147,8 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _tableHorizontalScrollController = ScrollController();
-  NumberFormat get _currency => ref
-      .read(userPreferencesProvider)
-      .currencyFormatter(decimalDigits: 0);
+  NumberFormat get _currency =>
+      ref.read(userPreferencesProvider).currencyFormatter(decimalDigits: 0);
   DateFormat get _dateFormat =>
       ref.read(userPreferencesProvider).dateFormatter();
   String get _currencyCode => ref.read(userPreferencesProvider).currency;
@@ -1301,15 +1304,20 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
         _toast('No active customers found. Add customers first.');
         return;
       }
-      final products = await _loadProducts();
+      final salesMarketAccess = await _resolveCurrentUserSalesMarketAccess();
+      final products = await _loadProducts(marketAccess: salesMarketAccess);
       if (products.isEmpty) {
-        _toast('No active products found. Add products first.');
+        final marketLabel = _salesMarketAccessLabel(salesMarketAccess);
+        _toast(
+          'No active products with $marketLabel prices. Update product pricing or staff market access.',
+        );
         return;
       }
       if (!mounted) return;
       final draft = await _showCreateOrderSheet(
         customers: customers,
         products: products,
+        salesMarketAccess: salesMarketAccess,
       );
       if (draft == null) return;
       await _createOrderWithStockDeduction(draft);
@@ -1326,33 +1334,42 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
     final snapshot = await _firestore
         .collection(FirestoreCollections.customers)
         .where('status', isEqualTo: 'active')
-        .orderBy('nameLower')
         .get();
-    return snapshot.docs.map((doc) {
+    final records = snapshot.docs.map((doc) {
       final data = doc.data();
       return _CustomerRecord(
         id: _stringOr(data['id'], fallback: doc.id),
         name: _stringOr(data['name'], fallback: 'Unknown'),
       );
     }).toList();
+    records.sort(
+      (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+    );
+    return records;
   }
 
-  Future<List<_ProductRecordLite>> _loadProducts() async {
+  Future<List<_ProductRecordLite>> _loadProducts({
+    required _SalesMarketAccess marketAccess,
+  }) async {
     final snapshot = await _firestore
         .collection(FirestoreCollections.products)
         .where('status', isEqualTo: 'active')
-        .orderBy('productNameLower')
         .get();
 
-    return snapshot.docs
-        .map(_productFromDoc)
+    final records = snapshot.docs
+        .map((doc) => _productFromDoc(doc, marketAccess: marketAccess))
         .whereType<_ProductRecordLite>()
         .toList();
+    records.sort(
+      (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+    );
+    return records;
   }
 
   _ProductRecordLite? _productFromDoc(
-    DocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
+    DocumentSnapshot<Map<String, dynamic>> doc, {
+    required _SalesMarketAccess marketAccess,
+  }) {
     final data = doc.data();
     if (data == null) return null;
     final code = _stringOr(data['productCode'], fallback: doc.id);
@@ -1385,7 +1402,13 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
       pricing['defaultMarketKey'],
       fallback: markets.keys.isEmpty ? '' : markets.keys.first,
     );
-    final market = _asMap(markets[defaultMarketKey]);
+    final selectedMarketKey = _resolveAllowedMarketKey(
+      markets: markets,
+      defaultMarketKey: defaultMarketKey,
+      access: marketAccess,
+    );
+    if (selectedMarketKey.isEmpty) return null;
+    final market = _asMap(markets[selectedMarketKey]);
     final pricesMap = _asMap(market['prices']);
     final priceByUnitKey = <String, _PriceForUnit>{};
     pricesMap.forEach((key, value) {
@@ -1397,12 +1420,14 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
         manualOfferPriceQar: _nullableDouble(item['manualOfferPriceQar']),
       );
     });
+    if (priceByUnitKey.isEmpty) return null;
 
     return _ProductRecordLite(
       code: code,
       name: name,
       availableQtyBaseUnit: _doubleOr(inventory['availableQtyBaseUnit']),
       baseUnit: baseUnit,
+      marketKey: selectedMarketKey,
       saleUnits: saleUnits,
       priceByUnitKey: priceByUnitKey,
     );
@@ -1411,6 +1436,7 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
   Future<_OrderDraftResult?> _showCreateOrderSheet({
     required List<_CustomerRecord> customers,
     required List<_ProductRecordLite> products,
+    required _SalesMarketAccess salesMarketAccess,
   }) {
     var selectedCustomer = customers.first;
     var channel = 'Salesman App';
@@ -1460,28 +1486,50 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
               totalQar: total,
               collectedQar: effectiveCollected,
             );
+            final dueAmount = total - effectiveCollected;
+            final paymentPalette = _paymentStyle(paymentStatus);
             return Align(
               alignment: Alignment.centerRight,
               child: Material(
-                color: Colors.white,
+                color: const Color(0xFFF8FAFC),
                 child: SizedBox(
-                  width: 560,
+                  width: 620,
                   height: double.infinity,
                   child: SafeArea(
                     child: Column(
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 18, 14, 10),
+                        Container(
+                          padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            border: Border(
+                              bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                            ),
+                          ),
                           child: Row(
                             children: [
                               const Expanded(
-                                child: Text(
-                                  'Create Order',
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF111827),
-                                  ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Create Order',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF111827),
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'Add customer, items, payment, and place order.',
+                                      style: TextStyle(
+                                        color: Color(0xFF6B7280),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               IconButton(
@@ -1491,158 +1539,283 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
                             ],
                           ),
                         ),
-                        const Divider(height: 1),
                         Expanded(
                           child: SingleChildScrollView(
-                            padding: const EdgeInsets.all(20),
+                            padding: const EdgeInsets.all(16),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                DropdownButtonFormField<_CustomerRecord>(
-                                  initialValue: selectedCustomer,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Customer',
-                                  ),
-                                  onChanged: (value) {
-                                    if (value == null) return;
-                                    setSheetState(
-                                      () => selectedCustomer = value,
-                                    );
-                                  },
-                                  items: customers
-                                      .map(
-                                        (customer) => DropdownMenuItem(
-                                          value: customer,
-                                          child: Text(
-                                            '${customer.name} (${customer.id})',
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
-                                ),
-                                const SizedBox(height: 12),
-                                TextFormField(
-                                  initialValue: channel,
-                                  onChanged: (value) => channel = value.trim(),
-                                  decoration: const InputDecoration(
-                                    labelText: 'Channel',
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                DropdownButtonFormField<String>(
-                                  initialValue: paymentMethod,
-                                  onChanged: (value) {
-                                    if (value == null) return;
-                                    setSheetState(() => paymentMethod = value);
-                                  },
-                                  items: const [
-                                    DropdownMenuItem(
-                                      value: 'Cash',
-                                      child: Text('Cash'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'Card',
-                                      child: Text('Card'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'Bank Transfer',
-                                      child: Text('Bank Transfer'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'Credit',
-                                      child: Text('Credit'),
-                                    ),
-                                  ],
-                                  decoration: const InputDecoration(
-                                    labelText: 'Payment Method',
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                TextFormField(
-                                  initialValue: collectedAmount.toStringAsFixed(
-                                    0,
-                                  ),
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
+                                if (salesMarketAccess !=
+                                    _SalesMarketAccess.both)
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFF7E6),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: const Color(0xFFF4D6A0),
                                       ),
-                                  onChanged: (value) {
-                                    final parsed = double.tryParse(value);
-                                    if (parsed == null) return;
-                                    setSheetState(
-                                      () => collectedAmount = parsed,
-                                    );
-                                  },
-                                  decoration: InputDecoration(
-                                    labelText:
-                                        'Collected Amount ($_currencyCode)',
-                                    hintText: '0',
+                                    ),
+                                    child: Text(
+                                      'Price access: ${_salesMarketAccessLabel(salesMarketAccess)} only',
+                                      style: const TextStyle(
+                                        color: Color(0xFF8A5A00),
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 16),
-                                const Text(
-                                  'Order Items',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF111827),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                for (int i = 0; i < lines.length; i++) ...[
-                                  _buildOrderLineEditor(
-                                    line: lines[i],
-                                    products: products,
-                                    onChanged: () => setSheetState(() {}),
-                                    onRemove: lines.length == 1
-                                        ? null
-                                        : () => setSheetState(
-                                            () => lines.removeAt(i),
-                                          ),
-                                  ),
+                                if (salesMarketAccess !=
+                                    _SalesMarketAccess.both)
                                   const SizedBox(height: 10),
-                                ],
-                                OutlinedButton.icon(
-                                  onPressed: () {
-                                    setSheetState(() {
-                                      final product = products.first;
-                                      lines.add(
-                                        _OrderLineInput(
-                                          product: product,
-                                          unitName:
-                                              product.saleUnits.first.name,
-                                          quantity: 1,
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: const Color(0xFFE2E8F0),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: _summaryMetric(
+                                              label: 'Items',
+                                              value: lines.length.toString(),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: _summaryMetric(
+                                              label: 'Total',
+                                              value: _currency.format(total),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: _summaryMetric(
+                                              label: 'Due',
+                                              value: _currency.format(
+                                                dueAmount,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 8,
                                         ),
-                                      );
-                                    });
-                                  },
-                                  icon: const Icon(Iconsax.add),
-                                  label: const Text('Add Product'),
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  'Total: ${_currency.format(total)}',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF111827),
+                                        decoration: BoxDecoration(
+                                          color: paymentPalette.$1,
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                          border: Border.all(
+                                            color: paymentPalette.$3,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Iconsax.shield_tick,
+                                              size: 16,
+                                              color: paymentPalette.$2,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                'Payment Status: ${paymentPalette.$4}',
+                                                style: TextStyle(
+                                                  color: paymentPalette.$2,
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              'Collected: ${_currency.format(effectiveCollected)}',
+                                              style: TextStyle(
+                                                color: paymentPalette.$2,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  'Payment Status: ${_paymentStyle(paymentStatus).$4} | Collected: ${_currency.format(effectiveCollected)}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: _paymentStyle(paymentStatus).$2,
+                                const SizedBox(height: 12),
+                                _sectionCard(
+                                  title: 'Order Information',
+                                  child: Column(
+                                    children: [
+                                      DropdownButtonFormField<_CustomerRecord>(
+                                        initialValue: selectedCustomer,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Customer',
+                                        ),
+                                        onChanged: (value) {
+                                          if (value == null) return;
+                                          setSheetState(
+                                            () => selectedCustomer = value,
+                                          );
+                                        },
+                                        items: customers
+                                            .map(
+                                              (customer) => DropdownMenuItem(
+                                                value: customer,
+                                                child: Text(
+                                                  '${customer.name} (${customer.id})',
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      TextFormField(
+                                        initialValue: channel,
+                                        onChanged: (value) =>
+                                            channel = value.trim(),
+                                        decoration: const InputDecoration(
+                                          labelText: 'Channel',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                _sectionCard(
+                                  title: 'Payment',
+                                  child: Column(
+                                    children: [
+                                      DropdownButtonFormField<String>(
+                                        initialValue: paymentMethod,
+                                        onChanged: (value) {
+                                          if (value == null) return;
+                                          setSheetState(
+                                            () => paymentMethod = value,
+                                          );
+                                        },
+                                        items: const [
+                                          DropdownMenuItem(
+                                            value: 'Cash',
+                                            child: Text('Cash'),
+                                          ),
+                                          DropdownMenuItem(
+                                            value: 'Card',
+                                            child: Text('Card'),
+                                          ),
+                                          DropdownMenuItem(
+                                            value: 'Bank Transfer',
+                                            child: Text('Bank Transfer'),
+                                          ),
+                                          DropdownMenuItem(
+                                            value: 'Credit',
+                                            child: Text('Credit'),
+                                          ),
+                                        ],
+                                        decoration: const InputDecoration(
+                                          labelText: 'Payment Method',
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      TextFormField(
+                                        initialValue: collectedAmount
+                                            .toStringAsFixed(0),
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        onChanged: (value) {
+                                          final parsed = double.tryParse(value);
+                                          if (parsed == null) return;
+                                          setSheetState(
+                                            () => collectedAmount = parsed,
+                                          );
+                                        },
+                                        decoration: InputDecoration(
+                                          labelText:
+                                              'Collected Amount ($_currencyCode)',
+                                          hintText: '0',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                _sectionCard(
+                                  title: 'Order Items',
+                                  trailing: OutlinedButton.icon(
+                                    onPressed: () {
+                                      setSheetState(() {
+                                        final product = products.first;
+                                        lines.add(
+                                          _OrderLineInput(
+                                            product: product,
+                                            unitName:
+                                                product.saleUnits.first.name,
+                                            quantity: 1,
+                                          ),
+                                        );
+                                      });
+                                    },
+                                    icon: const Icon(Iconsax.add, size: 16),
+                                    label: const Text('Add Product'),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      for (
+                                        int i = 0;
+                                        i < lines.length;
+                                        i++
+                                      ) ...[
+                                        _buildOrderLineEditor(
+                                          line: lines[i],
+                                          products: products,
+                                          onChanged: () => setSheetState(() {}),
+                                          onRemove: lines.length == 1
+                                              ? null
+                                              : () => setSheetState(
+                                                  () => lines.removeAt(i),
+                                                ),
+                                        ),
+                                        if (i != lines.length - 1)
+                                          const SizedBox(height: 10),
+                                      ],
+                                    ],
                                   ),
                                 ),
                                 if (errorText != null) ...[
                                   const SizedBox(height: 8),
-                                  Text(
-                                    errorText!,
-                                    style: const TextStyle(
-                                      color: Color(0xFFB42318),
-                                      fontWeight: FontWeight.w600,
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFF3F2),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: const Color(0xFFF4C7C4),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      errorText!,
+                                      style: const TextStyle(
+                                        color: Color(0xFFB42318),
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -1650,9 +1823,14 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
                             ),
                           ),
                         ),
-                        const Divider(height: 1),
-                        Padding(
-                          padding: const EdgeInsets.all(16),
+                        Container(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            border: Border(
+                              top: BorderSide(color: Color(0xFFE2E8F0)),
+                            ),
+                          ),
                           child: Row(
                             children: [
                               Expanded(
@@ -1733,12 +1911,85 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
     );
   }
 
+  Widget _summaryMetric({required String label, required String value}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF6B7280),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Color(0xFF111827),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionCard({
+    required String title,
+    required Widget child,
+    Widget? trailing,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (trailing != null) trailing,
+            ],
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+
   Widget _buildOrderLineEditor({
     required _OrderLineInput line,
     required List<_ProductRecordLite> products,
     required VoidCallback onChanged,
     required VoidCallback? onRemove,
   }) {
+    final unitKey = _normalizeKey(line.unitName);
+    final unitPrice =
+        line.product.priceByUnitKey[unitKey]?.resolvedPrice() ?? 0;
+    final lineTotal = line.quantity * unitPrice;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1832,16 +2083,36 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
             ],
           ),
           const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Available: ${line.product.availableQtyBaseUnit.toStringAsFixed(2)} ${line.product.baseUnit}',
-              style: const TextStyle(
-                color: Color(0xFF6B7280),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Available: ${line.product.availableQtyBaseUnit.toStringAsFixed(2)} ${line.product.baseUnit}',
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
-            ),
+              Text(
+                'Unit: ${_currency.format(unitPrice)}',
+                style: const TextStyle(
+                  color: Color(0xFF374151),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Line: ${_currency.format(lineTotal)}',
+                style: const TextStyle(
+                  color: Color(0xFF111827),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1858,11 +2129,13 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
         double total = 0;
         int itemsCount = 0;
         final items = <Map<String, dynamic>>[];
+        final consumedBaseByProductDocId = <String, double>{};
 
         for (final line in draft.lines) {
+          final productDocId = _normalizeProductDocId(line.product.code);
           final productDocRef = _firestore
               .collection(FirestoreCollections.products)
-              .doc(_normalizeProductDocId(line.product.code));
+              .doc(productDocId);
           final snap = await transaction.get(productDocRef);
           final data = snap.data();
           if (!snap.exists || data == null) {
@@ -1882,11 +2155,14 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
           if (requestedBase <= 0) {
             throw StateError('Invalid quantity for ${line.product.name}.');
           }
-          if (currentAvailable < requestedBase) {
+          final alreadyConsumed = consumedBaseByProductDocId[productDocId] ?? 0;
+          final totalRequestedForProduct = alreadyConsumed + requestedBase;
+          if (currentAvailable < totalRequestedForProduct) {
             throw StateError(
               'Insufficient stock for ${line.product.name}. Available: ${currentAvailable.toStringAsFixed(2)} ${line.product.baseUnit}',
             );
           }
+          consumedBaseByProductDocId[productDocId] = totalRequestedForProduct;
           final key = _normalizeKey(line.unitName);
           final linePrice =
               line.product.priceByUnitKey[key]?.resolvedPrice() ?? 0;
@@ -1900,6 +2176,7 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
           items.add({
             'productCode': line.product.code,
             'productName': line.product.name,
+            'appliedMarketKey': line.product.marketKey,
             'unit': line.unitName,
             'qty': line.quantity,
             'conversionToBaseUnit': unit.conversionToBaseUnit,
@@ -1910,7 +2187,8 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
 
           transaction.set(productDocRef, {
             'inventory': {
-              'availableQtyBaseUnit': currentAvailable - requestedBase,
+              'availableQtyBaseUnit':
+                  currentAvailable - totalRequestedForProduct,
             },
             'audit': {'updatedAt': FieldValue.serverTimestamp()},
           }, SetOptions(merge: true));
@@ -1937,9 +2215,17 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
           'amountQar': total,
           'paymentMethod': draft.paymentMethod,
           'collectedAmountQar': collected,
+          'salesMarketKey': draft.lines.isEmpty
+              ? 'unknown'
+              : draft.lines.first.product.marketKey,
           'paymentStatus': _paymentStatusToString(paymentStatus),
           'orderStatus': 'processing',
           'items': items,
+          'inventorySync': {
+            'stockDeducted': true,
+            'deductedBy': 'admin_orders_tab',
+            'deductedAt': FieldValue.serverTimestamp(),
+          },
           'createdAt': FieldValue.serverTimestamp(),
         });
       });
@@ -1948,6 +2234,114 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
     } catch (error) {
       if (!mounted) return;
       _toast('Failed to place order: $error');
+    }
+  }
+
+  Future<_SalesMarketAccess> _resolveCurrentUserSalesMarketAccess() async {
+    final user = _auth.currentUser;
+    final profile = ref.read(userProfileProvider).value;
+    final role = _stringOr(profile?['role']).toLowerCase();
+    final isPrivilegedRole =
+        role.contains('admin') || role.contains('developer');
+    if (isPrivilegedRole) {
+      return _SalesMarketAccess.both;
+    }
+
+    final userEmail = (user?.email ?? _stringOr(profile?['email']))
+        .trim()
+        .toLowerCase();
+    final userName = (user?.displayName ?? _stringOr(profile?['fullName']))
+        .trim()
+        .toLowerCase();
+    final userUid = user?.uid.trim() ?? '';
+
+    if (userEmail.isEmpty && userName.isEmpty && userUid.isEmpty) {
+      return _SalesMarketAccess.localOnly;
+    }
+
+    try {
+      final snapshot = await _firestore
+          .collection(FirestoreCollections.staffSalesmen)
+          .get();
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final docUid = _stringOr(data['uid']).trim();
+        final docEmail = _stringOr(data['email']).trim().toLowerCase();
+        final docName = _stringOr(data['name']).trim().toLowerCase();
+        final isMatch =
+            (userUid.isNotEmpty && docUid == userUid) ||
+            (userEmail.isNotEmpty && docEmail == userEmail) ||
+            (userName.isNotEmpty && docName == userName);
+        if (!isMatch) continue;
+        final access = _salesMarketAccessFromString(
+          _stringOr(data['salesMarketAccess'], fallback: 'both'),
+        );
+        return access == _SalesMarketAccess.both
+            ? _SalesMarketAccess.localOnly
+            : access;
+      }
+    } catch (_) {
+      return _SalesMarketAccess.localOnly;
+    }
+
+    return _SalesMarketAccess.localOnly;
+  }
+
+  _SalesMarketAccess _salesMarketAccessFromString(String raw) {
+    switch (raw.toLowerCase()) {
+      case 'hyper_only':
+      case 'hyper':
+        return _SalesMarketAccess.hyperOnly;
+      case 'local_only':
+      case 'local':
+        return _SalesMarketAccess.localOnly;
+      default:
+        return _SalesMarketAccess.both;
+    }
+  }
+
+  String _salesMarketAccessLabel(_SalesMarketAccess access) {
+    switch (access) {
+      case _SalesMarketAccess.hyperOnly:
+        return 'Hyper Market';
+      case _SalesMarketAccess.localOnly:
+        return 'Local Market';
+      case _SalesMarketAccess.both:
+        return 'All Markets';
+    }
+  }
+
+  String _resolveAllowedMarketKey({
+    required Map<String, dynamic> markets,
+    required String defaultMarketKey,
+    required _SalesMarketAccess access,
+  }) {
+    if (markets.isEmpty) return '';
+    final normalizedByKey = <String, String>{};
+    for (final key in markets.keys) {
+      normalizedByKey[_normalizeKey(key)] = key;
+    }
+
+    String? findByHint(String hint) {
+      final direct = normalizedByKey[_normalizeKey(hint)];
+      if (direct != null) return direct;
+      for (final entry in normalizedByKey.entries) {
+        if (entry.key.contains(hint)) return entry.value;
+      }
+      return null;
+    }
+
+    switch (access) {
+      case _SalesMarketAccess.hyperOnly:
+        return findByHint('hyper') ?? '';
+      case _SalesMarketAccess.localOnly:
+        return findByHint('local') ?? '';
+      case _SalesMarketAccess.both:
+        if (defaultMarketKey.isNotEmpty &&
+            markets.containsKey(defaultMarketKey)) {
+          return defaultMarketKey;
+        }
+        return markets.keys.first;
     }
   }
 
@@ -2045,11 +2439,12 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (context, _, __) {
         final width = MediaQuery.of(context).size.width;
-        final sheetWidth = width > 1080 ? 460.0 : (width > 720 ? 420.0 : width);
+        final sheetWidth = width > 1080 ? 500.0 : (width > 720 ? 440.0 : width);
+        final currentStatusStyle = _orderStyle(order.orderStatus);
         return Align(
           alignment: Alignment.centerRight,
           child: Material(
-            color: Colors.white,
+            color: const Color(0xFFF8FAFC),
             child: SafeArea(
               child: SizedBox(
                 width: sheetWidth,
@@ -2059,6 +2454,7 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
                     Container(
                       padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
                       decoration: const BoxDecoration(
+                        color: Colors.white,
                         border: Border(
                           bottom: BorderSide(color: Color(0xFFE2E8F0)),
                         ),
@@ -2066,13 +2462,27 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
                       child: Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              'Update status for ${order.id}',
-                              style: const TextStyle(
-                                color: Color(0xFF111827),
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Update Status • ${order.id}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF111827),
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                const Text(
+                                  'Select the next fulfillment stage for this order.',
+                                  style: TextStyle(
+                                    color: Color(0xFF6B7280),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           IconButton(
@@ -2083,32 +2493,102 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
                       ),
                     ),
                     Expanded(
-                      child: ListView(
-                        padding: const EdgeInsets.all(18),
-                        children: [
-                          _statusOptionTile(
-                            label: 'Processing',
-                            active:
-                                order.orderStatus == _OrderStatus.processing,
-                            onTap: () => Navigator.of(
-                              context,
-                            ).pop(_OrderStatus.processing),
-                          ),
-                          _statusOptionTile(
-                            label: 'Completed',
-                            active: order.orderStatus == _OrderStatus.delivered,
-                            onTap: () => Navigator.of(
-                              context,
-                            ).pop(_OrderStatus.delivered),
-                          ),
-                          _statusOptionTile(
-                            label: 'Cancelled',
-                            active: order.orderStatus == _OrderStatus.cancelled,
-                            onTap: () => Navigator.of(
-                              context,
-                            ).pop(_OrderStatus.cancelled),
-                          ),
-                        ],
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(0xFFE2E8F0),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Iconsax.record_circle,
+                                    size: 14,
+                                    color: currentStatusStyle.$2,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'Current Status',
+                                    style: TextStyle(
+                                      color: Color(0xFF6B7280),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: currentStatusStyle.$1,
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: currentStatusStyle.$3,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      currentStatusStyle.$4,
+                                      style: TextStyle(
+                                        color: currentStatusStyle.$2,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _sectionCard(
+                              title: 'Select Next Status',
+                              child: Column(
+                                children: [
+                                  _statusOptionTile(
+                                    label: 'Processing',
+                                    subtitle:
+                                        'Order is accepted and being prepared.',
+                                    active:
+                                        order.orderStatus ==
+                                        _OrderStatus.processing,
+                                    onTap: () => Navigator.of(
+                                      context,
+                                    ).pop(_OrderStatus.processing),
+                                  ),
+                                  _statusOptionTile(
+                                    label: 'Completed',
+                                    subtitle: 'Order delivered successfully.',
+                                    active:
+                                        order.orderStatus ==
+                                        _OrderStatus.delivered,
+                                    onTap: () => Navigator.of(
+                                      context,
+                                    ).pop(_OrderStatus.delivered),
+                                  ),
+                                  _statusOptionTile(
+                                    label: 'Cancelled',
+                                    subtitle:
+                                        'Order cancelled by team or customer.',
+                                    active:
+                                        order.orderStatus ==
+                                        _OrderStatus.cancelled,
+                                    onTap: () => Navigator.of(
+                                      context,
+                                    ).pop(_OrderStatus.cancelled),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -2153,6 +2633,7 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
 
   Widget _statusOptionTile({
     required String label,
+    required String subtitle,
     required bool active,
     required VoidCallback onTap,
   }) {
@@ -2177,14 +2658,35 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
               color: active ? const Color(0xFF2EA8A5) : const Color(0xFF6B7280),
             ),
             const SizedBox(width: 10),
-            Text(
-              label,
-              style: TextStyle(
-                color: active
-                    ? const Color(0xFF0F766E)
-                    : const Color(0xFF1F2937),
-                fontWeight: FontWeight.w600,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: active
+                          ? const Color(0xFF0F766E)
+                          : const Color(0xFF1F2937),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
+            ),
+            Icon(
+              Iconsax.arrow_right_3,
+              size: 14,
+              color: active ? const Color(0xFF2EA8A5) : const Color(0xFF9CA3AF),
             ),
           ],
         ),
@@ -2201,11 +2703,17 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (context, _, __) {
         final width = MediaQuery.of(context).size.width;
-        final sheetWidth = width > 1080 ? 460.0 : (width > 720 ? 420.0 : width);
+        final sheetWidth = width > 1080 ? 520.0 : (width > 720 ? 460.0 : width);
+        final paymentStyle = _paymentStyle(order.paymentStatus);
+        final orderStyle = _orderStyle(order.orderStatus);
+        final dueAmount = (order.amountQar - order.collectedAmountQar).clamp(
+          0.0,
+          double.infinity,
+        );
         return Align(
           alignment: Alignment.centerRight,
           child: Material(
-            color: Colors.white,
+            color: const Color(0xFFF8FAFC),
             child: SafeArea(
               child: SizedBox(
                 width: sheetWidth,
@@ -2215,6 +2723,7 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
                     Container(
                       padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
                       decoration: const BoxDecoration(
+                        color: Colors.white,
                         border: Border(
                           bottom: BorderSide(color: Color(0xFFE2E8F0)),
                         ),
@@ -2222,13 +2731,27 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
                       child: Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              'Order ${order.id}',
-                              style: const TextStyle(
-                                color: Color(0xFF111827),
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Order ${order.id}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF111827),
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                const Text(
+                                  'Order snapshot and payment summary.',
+                                  style: TextStyle(
+                                    color: Color(0xFF6B7280),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           IconButton(
@@ -2239,36 +2762,149 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
                       ),
                     ),
                     Expanded(
-                      child: ListView(
-                        padding: const EdgeInsets.all(18),
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(0xFFE2E8F0),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _summaryMetric(
+                                          label: 'Amount',
+                                          value: _currency.format(
+                                            order.amountQar,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _summaryMetric(
+                                          label: 'Collected',
+                                          value: _currency.format(
+                                            order.collectedAmountQar,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _summaryMetric(
+                                          label: 'Due',
+                                          value: _currency.format(dueAmount),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _statusChip(
+                                          label: 'Payment: ${paymentStyle.$4}',
+                                          textColor: paymentStyle.$2,
+                                          background: paymentStyle.$1,
+                                          borderColor: paymentStyle.$3,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: _statusChip(
+                                          label: 'Order: ${orderStyle.$4}',
+                                          textColor: orderStyle.$2,
+                                          background: orderStyle.$1,
+                                          borderColor: orderStyle.$3,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _sectionCard(
+                              title: 'Order Information',
+                              child: Column(
+                                children: [
+                                  _orderDetailRow(
+                                    'Customer',
+                                    order.customerName,
+                                  ),
+                                  _orderDetailRow(
+                                    'Salesman',
+                                    order.salesmanName,
+                                  ),
+                                  _orderDetailRow(
+                                    'Order Date',
+                                    _dateFormat.format(order.orderDate),
+                                  ),
+                                  _orderDetailRow(
+                                    'Items',
+                                    order.itemsCount.toString(),
+                                  ),
+                                  _orderDetailRow('Channel', order.channel),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _sectionCard(
+                              title: 'Payment Details',
+                              child: Column(
+                                children: [
+                                  _orderDetailRow(
+                                    'Payment Method',
+                                    order.paymentMethod,
+                                  ),
+                                  _orderDetailRow(
+                                    'Payment Status',
+                                    paymentStyle.$4,
+                                  ),
+                                  _orderDetailRow(
+                                    'Collected',
+                                    _currency.format(order.collectedAmountQar),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        border: Border(
+                          top: BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                      ),
+                      child: Row(
                         children: [
-                          _orderDetailRow('Customer', order.customerName),
-                          _orderDetailRow('Salesman', order.salesmanName),
-                          _orderDetailRow(
-                            'Order Date',
-                            _dateFormat.format(order.orderDate),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text('Close'),
+                            ),
                           ),
-                          _orderDetailRow('Items', order.itemsCount.toString()),
-                          _orderDetailRow('Channel', order.channel),
-                          _orderDetailRow(
-                            'Amount',
-                            _currency.format(order.amountQar),
-                          ),
-                          _orderDetailRow(
-                            'Payment Method',
-                            order.paymentMethod,
-                          ),
-                          _orderDetailRow(
-                            'Collected',
-                            _currency.format(order.collectedAmountQar),
-                          ),
-                          _orderDetailRow(
-                            'Payment',
-                            _paymentStyle(order.paymentStatus).$4,
-                          ),
-                          _orderDetailRow(
-                            'Order Status',
-                            _orderStyle(order.orderStatus).$4,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () {
+                                Navigator.of(context).pop();
+                                _updateOrderStatus(order);
+                              },
+                              child: const Text('Update Status'),
+                            ),
                           ),
                         ],
                       ),
@@ -2298,7 +2934,7 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
 
   Widget _orderDetailRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

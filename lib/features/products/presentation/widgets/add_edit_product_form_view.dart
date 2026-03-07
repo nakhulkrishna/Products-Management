@@ -223,6 +223,8 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
                 overrideEnabled: row.overrideEnabled,
                 price: row.manualPrice?.toStringAsFixed(2) ?? '',
                 offerPrice: row.manualOfferPrice?.toStringAsFixed(2) ?? '',
+                seededAutoPrice: row.autoPrice,
+                seededAutoOfferPrice: row.autoOfferPrice,
               ),
           },
       });
@@ -468,7 +470,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
               _sectionCard(
                 title: 'Market Pricing',
                 subtitle:
-                    'Set manual override pricing per market or use auto-calculated values.',
+                    'Set pricing per market for each unit.',
                 child: Column(
                   children: [
                     Row(
@@ -906,7 +908,10 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
                     onEditingComplete: () => setState(() {}),
                     onTapOutside: (_) => setState(() {}),
                   )
-                : _readonlyAutoValue(null),
+                : _readonlyAutoValue(
+                    _computedAutoPrice(_selectedMarket, unit) ??
+                        config.seededAutoPrice,
+                  ),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -926,7 +931,10 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
                     onEditingComplete: () => setState(() {}),
                     onTapOutside: (_) => setState(() {}),
                   )
-                : _readonlyAutoValue(null),
+                : _readonlyAutoValue(
+                    _computedAutoOfferPrice(_selectedMarket, unit) ??
+                        config.seededAutoOfferPrice,
+                  ),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1165,6 +1173,47 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
     return value == null || value <= 0 ? 1 : value;
   }
 
+  double? _positiveDouble(String input) {
+    final parsed = double.tryParse(input.trim());
+    if (parsed == null || parsed <= 0) return null;
+    return parsed;
+  }
+
+  ({double? basePrice, double? baseOfferPrice}) _manualBaseForMarket(
+    String market,
+  ) {
+    final rows = _pricingByMarket[market]!;
+    double? basePrice;
+    double? baseOfferPrice;
+    for (final unit in _allUnits) {
+      final config = rows[unit];
+      if (config == null || !config.overrideEnabled) continue;
+      final conversion = _conversionForUnit(unit);
+      final manualPrice = _positiveDouble(config.price);
+      final manualOffer = _positiveDouble(config.offerPrice);
+      if (basePrice == null && manualPrice != null) {
+        basePrice = manualPrice / conversion;
+      }
+      if (baseOfferPrice == null && manualOffer != null) {
+        baseOfferPrice = manualOffer / conversion;
+      }
+      if (basePrice != null && baseOfferPrice != null) break;
+    }
+    return (basePrice: basePrice, baseOfferPrice: baseOfferPrice);
+  }
+
+  double? _computedAutoPrice(String market, String unit) {
+    final base = _manualBaseForMarket(market).basePrice;
+    if (base == null) return null;
+    return base * _conversionForUnit(unit);
+  }
+
+  double? _computedAutoOfferPrice(String market, String unit) {
+    final base = _manualBaseForMarket(market).baseOfferPrice;
+    if (base == null) return null;
+    return base * _conversionForUnit(unit);
+  }
+
   double _computedStockInBase() {
     final stock = double.tryParse(_stockController.text.trim()) ?? 0;
     final unit = _stockUnit ?? _baseUnit;
@@ -1224,22 +1273,29 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
     if (baseUnit != null) {
       for (final market in _markets) {
         final rows = _pricingByMarket[market]!;
-        var hasManual = false;
+        var hasManualPrice = false;
+        var hasAutoRows = false;
         for (final unit in _allUnits) {
           final config = rows[unit];
-          final price = config == null
-              ? null
-              : double.tryParse(config.price.trim());
-          if (config != null &&
-              config.overrideEnabled &&
-              price != null &&
-              price > 0) {
-            hasManual = true;
-            break;
+          if (config == null) continue;
+          if (!config.overrideEnabled) {
+            hasAutoRows = true;
+            continue;
+          }
+          final price = _positiveDouble(config.price);
+          if (price != null) {
+            hasManualPrice = true;
           }
         }
-        if (!hasManual) {
-          errors.add('At least one manual price is required in $market.');
+        if (!hasManualPrice) {
+          errors.add(
+            'At least one manual price is required in $market to calculate auto prices.',
+          );
+        }
+        if (hasAutoRows && _manualBaseForMarket(market).basePrice == null) {
+          errors.add(
+            'Auto price could not be calculated in $market. Add one valid manual price.',
+          );
         }
       }
     }
@@ -1252,9 +1308,11 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
     final normalizedId = rawCode.startsWith('#') ? rawCode : '#$rawCode';
     final hyperRows = _pricingByMarket[_markets.first]!;
     final baseConfig = hyperRows[baseUnit!]!;
-    final manualBasePrice = double.tryParse(baseConfig.price.trim());
-    final manualBaseOffer = double.tryParse(baseConfig.offerPrice.trim());
-    final displayPrice = manualBasePrice ?? 0;
+    final manualBasePrice = _positiveDouble(baseConfig.price);
+    final manualBaseOffer = _positiveDouble(baseConfig.offerPrice);
+    final autoBasePrice = _computedAutoPrice(_markets.first, baseUnit);
+    final autoBaseOffer = _computedAutoOfferPrice(_markets.first, baseUnit);
+    final displayPrice = manualBasePrice ?? autoBasePrice ?? 0;
 
     final saleUnitConfigs = <SaleUnitConfig>[];
     for (final unit in _allUnits) {
@@ -1272,15 +1330,19 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
       final list = <MarketUnitPrice>[];
       for (final unit in _allUnits) {
         final config = rows[unit] ?? _PriceOverride.empty();
+        final manualPrice = _positiveDouble(config.price);
+        final manualOfferPrice = _positiveDouble(config.offerPrice);
+        final autoPrice = _computedAutoPrice(market, unit) ?? config.seededAutoPrice;
+        final autoOfferPrice =
+            _computedAutoOfferPrice(market, unit) ?? config.seededAutoOfferPrice;
         list.add(
           MarketUnitPrice(
             unit: unit,
             overrideEnabled: config.overrideEnabled,
-            manualPrice: double.tryParse(config.price.trim()),
-            manualOfferPrice: double.tryParse(config.offerPrice.trim()),
-            // Model B: do not derive unit prices from base-unit multipliers.
-            autoPrice: null,
-            autoOfferPrice: null,
+            manualPrice: config.overrideEnabled ? manualPrice : null,
+            manualOfferPrice: config.overrideEnabled ? manualOfferPrice : null,
+            autoPrice: config.overrideEnabled ? null : autoPrice,
+            autoOfferPrice: config.overrideEnabled ? null : autoOfferPrice,
           ),
         );
       }
@@ -1299,7 +1361,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
       saleUnits: saleUnitConfigs,
       marketPricingByMarket: marketPricingByMarket,
       displayPriceQar: displayPrice,
-      displayOfferPriceQar: manualBaseOffer,
+      displayOfferPriceQar: manualBaseOffer ?? autoBaseOffer,
       initialStockInput: initialStockInput,
       initialStockInputUnit: _stockUnit,
       initialStockInBaseUnit: _computedStockInBase(),
@@ -1422,15 +1484,23 @@ class _PriceOverride {
   bool overrideEnabled;
   String price;
   String offerPrice;
+  double? seededAutoPrice;
+  double? seededAutoOfferPrice;
 
   _PriceOverride({
     required this.overrideEnabled,
     required this.price,
     required this.offerPrice,
+    this.seededAutoPrice,
+    this.seededAutoOfferPrice,
   });
 
   factory _PriceOverride.empty() {
-    return _PriceOverride(overrideEnabled: false, price: '', offerPrice: '');
+    return _PriceOverride(
+      overrideEnabled: false,
+      price: '',
+      offerPrice: '',
+    );
   }
 
   _PriceOverride copy() {
@@ -1438,6 +1508,8 @@ class _PriceOverride {
       overrideEnabled: overrideEnabled,
       price: price,
       offerPrice: offerPrice,
+      seededAutoPrice: seededAutoPrice,
+      seededAutoOfferPrice: seededAutoOfferPrice,
     );
   }
 }

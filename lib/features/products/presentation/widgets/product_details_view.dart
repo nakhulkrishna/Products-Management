@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:products_catelogs/features/products/presentation/widgets/add_edit_product_form_view.dart';
 
 class ProductDetailsData {
   final String id;
@@ -8,11 +9,16 @@ class ProductDetailsData {
   final String description;
   final String baseUnit;
   final List<String> saleUnits;
+  final List<SaleUnitConfig> saleUnitConfigs;
+  final Map<String, List<MarketUnitPrice>> marketPricingByMarket;
   final double stockInBaseUnit;
+  final double initialStockInput;
+  final String initialStockInputUnit;
   final double priceQar;
   final double? offerPriceQar;
   final int sales;
   final String linkedMarketing;
+  final bool isHidden;
   final String stockStatusLabel;
   final Color stockStatusColor;
   final Color stockStatusBackground;
@@ -20,6 +26,7 @@ class ProductDetailsData {
   final Color iconColor;
   final Color iconBackground;
   final String? imageUrl;
+  final List<String> imageUrls;
 
   const ProductDetailsData({
     required this.id,
@@ -28,11 +35,16 @@ class ProductDetailsData {
     required this.description,
     required this.baseUnit,
     required this.saleUnits,
+    required this.saleUnitConfigs,
+    required this.marketPricingByMarket,
     required this.stockInBaseUnit,
+    required this.initialStockInput,
+    required this.initialStockInputUnit,
     required this.priceQar,
     required this.offerPriceQar,
     required this.sales,
     required this.linkedMarketing,
+    required this.isHidden,
     required this.stockStatusLabel,
     required this.stockStatusColor,
     required this.stockStatusBackground,
@@ -40,6 +52,7 @@ class ProductDetailsData {
     required this.iconColor,
     required this.iconBackground,
     required this.imageUrl,
+    required this.imageUrls,
   });
 }
 
@@ -89,6 +102,12 @@ class ProductDetailsView extends StatelessWidget {
                     ),
               const SizedBox(height: 12),
               _buildUnitsCard(),
+              const SizedBox(height: 12),
+              _buildMarketPricingCard(),
+              if (data.imageUrls.length > 1) ...[
+                const SizedBox(height: 12),
+                _buildGalleryCard(),
+              ],
             ],
           ),
         );
@@ -201,6 +220,15 @@ class ProductDetailsView extends StatelessWidget {
                           color: const Color(0xFF2277B8),
                           background: const Color(0xFFEAF4FF),
                         ),
+                        _statusPill(
+                          text: data.isHidden ? 'Hidden' : 'Visible',
+                          color: data.isHidden
+                              ? const Color(0xFF9A3412)
+                              : const Color(0xFF166534),
+                          background: data.isHidden
+                              ? const Color(0xFFFFF7ED)
+                              : const Color(0xFFECFDF3),
+                        ),
                       ],
                     ),
                   ],
@@ -254,6 +282,12 @@ class ProductDetailsView extends StatelessWidget {
                 '${data.stockInBaseUnit.toStringAsFixed(2)} ${data.baseUnit}',
           ),
           const Divider(height: 14, color: Color(0xFFE9EDF3)),
+          _metricRow(
+            label: 'Initial Stock',
+            value:
+                '${data.initialStockInput.toStringAsFixed(2)} ${data.initialStockInputUnit}',
+          ),
+          const Divider(height: 14, color: Color(0xFFE9EDF3)),
           _metricRow(label: 'Sales Count', value: data.sales.toString()),
           const Divider(height: 14, color: Color(0xFFE9EDF3)),
           _metricRow(label: 'Linked Marketing', value: data.linkedMarketing),
@@ -275,7 +309,7 @@ class ProductDetailsView extends StatelessWidget {
           _metricRow(
             label: 'Offer Price',
             value: data.offerPriceQar == null
-                ? 'Auto / N/A'
+                ? 'N/A'
                 : '$currencyCode ${data.offerPriceQar!.toStringAsFixed(2)}',
           ),
         ],
@@ -285,28 +319,162 @@ class ProductDetailsView extends StatelessWidget {
 
   Widget _buildUnitsCard() {
     return _card(
-      title: 'Sale Units',
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
+      title: 'Units & Conversion',
+      child: Column(
         children: [
-          for (final unit in data.saleUnits)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: const Color(0xFFE4E8F0)),
-              ),
-              child: Text(
-                unit,
-                style: const TextStyle(
-                  color: Color(0xFF374151),
-                  fontWeight: FontWeight.w600,
+          for (int i = 0; i < data.saleUnitConfigs.length; i++) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    data.saleUnitConfigs[i].unit,
+                    style: const TextStyle(
+                      color: Color(0xFF111827),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
+                Text(
+                  '1 ${data.saleUnitConfigs[i].unit} = ${data.saleUnitConfigs[i].conversionToBaseUnit.toStringAsFixed(2)} ${data.baseUnit}',
+                  style: const TextStyle(
+                    color: Color(0xFF374151),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            if (i != data.saleUnitConfigs.length - 1)
+              const Divider(height: 14, color: Color(0xFFE9EDF3)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMarketPricingCard() {
+    final marketNames = data.marketPricingByMarket.keys.toList()..sort();
+    return _card(
+      title: 'Market Pricing',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (int i = 0; i < marketNames.length; i++) ...[
+            _marketPricingBlock(
+              marketName: marketNames[i],
+              rows: data.marketPricingByMarket[marketNames[i]] ?? const [],
+            ),
+            if (i != marketNames.length - 1) const SizedBox(height: 14),
+          ],
+          if (marketNames.isEmpty)
+            const Text(
+              'No market pricing data available.',
+              style: TextStyle(
+                color: Color(0xFF6B7280),
+                fontWeight: FontWeight.w500,
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _marketPricingBlock({
+    required String marketName,
+    required List<MarketUnitPrice> rows,
+  }) {
+    final byUnit = {for (final row in rows) row.unit: row};
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE4E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            marketName,
+            style: const TextStyle(
+              color: Color(0xFF111827),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (int i = 0; i < data.saleUnits.length; i++) ...[
+            _unitPriceLine(
+              unit: data.saleUnits[i],
+              price: _resolvedUnitPrice(byUnit[data.saleUnits[i]]),
+            ),
+            if (i != data.saleUnits.length - 1)
+              const Divider(height: 14, color: Color(0xFFE2E8F0)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _unitPriceLine({required String unit, required double? price}) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            unit,
+            style: const TextStyle(
+              color: Color(0xFF374151),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        Text(
+          price == null ? 'N/A' : '$currencyCode ${price.toStringAsFixed(2)}',
+          style: const TextStyle(
+            color: Color(0xFF111827),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+
+  double? _resolvedUnitPrice(MarketUnitPrice? row) {
+    if (row == null) return null;
+    return row.manualOfferPrice ??
+        row.autoOfferPrice ??
+        row.manualPrice ??
+        row.autoPrice;
+  }
+
+  Widget _buildGalleryCard() {
+    return _card(
+      title: 'Images',
+      child: SizedBox(
+        height: 86,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: data.imageUrls.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            return Container(
+              width: 86,
+              height: 86,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE4E8F0)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Image.network(
+                data.imageUrls[index],
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const ColoredBox(
+                  color: Color(0xFFF3F4F6),
+                  child: Icon(Iconsax.gallery_slash),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }

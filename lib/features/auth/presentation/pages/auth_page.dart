@@ -15,7 +15,6 @@ class AuthPage extends ConsumerStatefulWidget {
 class _AuthPageState extends ConsumerState<AuthPage> {
   final _formKey = GlobalKey<FormState>();
   final _fullNameController = TextEditingController();
-  AppUserRole _selectedRole = AppUserRole.staff;
   final _phoneController = TextEditingController(text: '+974 5500 1122');
   final _regionController = TextEditingController(text: 'Doha');
   final _departmentController = TextEditingController(text: 'Commercial');
@@ -71,7 +70,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                   Text(
                     _isLogin
                         ? 'Sign in to continue managing products.'
-                        : 'Create a manager account to access the dashboard.',
+                        : 'New staff/salesman accounts require admin approval before access.',
                     style: const TextStyle(
                       color: Color(0xFF6B7280),
                       fontWeight: FontWeight.w500,
@@ -95,25 +94,6 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                         }
                         return null;
                       },
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<AppUserRole>(
-                      initialValue: _selectedRole,
-                      decoration: const InputDecoration(labelText: 'Role'),
-                      items: AppUserRole.values
-                          .map(
-                            (role) => DropdownMenuItem<AppUserRole>(
-                              value: role,
-                              child: Text(role.label),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: _isSubmitting
-                          ? null
-                          : (role) {
-                              if (role == null) return;
-                              setState(() => _selectedRole = role);
-                            },
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
@@ -257,7 +237,6 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                                   _isLogin = !_isLogin;
                                   _passwordController.clear();
                                   if (!_isLogin) {
-                                    _selectedRole = AppUserRole.staff;
                                     _phoneController.text = '+974 5500 1122';
                                     _regionController.text = 'Doha';
                                     _departmentController.text = 'Commercial';
@@ -284,7 +263,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final fullName = _fullNameController.text.trim();
-    final role = _selectedRole.firestoreValue;
+    final role = AppUserRole.staff.firestoreValue;
     final phone = _phoneController.text.trim();
     final region = _regionController.text.trim();
     final department = _departmentController.text.trim();
@@ -306,6 +285,15 @@ class _AuthPageState extends ConsumerState<AuthPage> {
       }
     } on FirebaseAuthException catch (e) {
       _showMessage(_friendlyFirebaseMessage(e), isError: true);
+    } on FirebaseException catch (e) {
+      if (e.plugin == 'cloud_firestore' && e.code == 'permission-denied') {
+        _showMessage(
+          'Signed in, but Firestore access is denied. Contact admin to approve/activate your account.',
+          isError: true,
+        );
+      } else {
+        _showMessage('Authentication failed: ${e.message ?? e.code}', isError: true);
+      }
     } catch (e) {
       _showMessage('Authentication failed: $e', isError: true);
     } finally {

@@ -14,6 +14,8 @@ class WebShellScaffold extends StatelessWidget {
   final ValueChanged<SidebarTab> onTabSelected;
   final VoidCallback onLogout;
   final VoidCallback onOpenSettings;
+  final VoidCallback onOpenOrdersFromNotifications;
+  final VoidCallback onOpenCoreTeamFromNotifications;
   final ValueChanged<String> onSearchSubmitted;
   final String userName;
   final String userSubtitle;
@@ -26,6 +28,8 @@ class WebShellScaffold extends StatelessWidget {
     required this.onTabSelected,
     required this.onLogout,
     required this.onOpenSettings,
+    required this.onOpenOrdersFromNotifications,
+    required this.onOpenCoreTeamFromNotifications,
     required this.onSearchSubmitted,
     required this.userName,
     required this.userSubtitle,
@@ -47,6 +51,8 @@ class WebShellScaffold extends StatelessWidget {
             onTabSelected: onTabSelected,
             onLogout: onLogout,
             onOpenSettings: onOpenSettings,
+            onOpenOrdersFromNotifications: onOpenOrdersFromNotifications,
+            onOpenCoreTeamFromNotifications: onOpenCoreTeamFromNotifications,
             onSearchSubmitted: onSearchSubmitted,
             body: body,
           );
@@ -86,10 +92,17 @@ class WebShellScaffold extends StatelessWidget {
                           compact: isCompact,
                           narrow: isNarrow,
                           onOpenSettings: onOpenSettings,
+                          onOpenOrdersFromNotifications:
+                              onOpenOrdersFromNotifications,
+                          onOpenCoreTeamFromNotifications:
+                              onOpenCoreTeamFromNotifications,
                           onSearchSubmitted: onSearchSubmitted,
                           onLogout: onLogout,
                           userName: userName,
                           userSubtitle: userSubtitle,
+                          canSeeCoreTeamNotifications: visibleTabs.contains(
+                            SidebarTab.coreTeam,
+                          ),
                         ),
                         const Divider(height: 1, color: Color(0xFFE8EBF0)),
                         Expanded(
@@ -117,6 +130,8 @@ class _MobileShellScaffold extends StatelessWidget {
   final ValueChanged<SidebarTab> onTabSelected;
   final VoidCallback onLogout;
   final VoidCallback onOpenSettings;
+  final VoidCallback onOpenOrdersFromNotifications;
+  final VoidCallback onOpenCoreTeamFromNotifications;
   final ValueChanged<String> onSearchSubmitted;
   final Widget body;
 
@@ -126,6 +141,8 @@ class _MobileShellScaffold extends StatelessWidget {
     required this.onTabSelected,
     required this.onLogout,
     required this.onOpenSettings,
+    required this.onOpenOrdersFromNotifications,
+    required this.onOpenCoreTeamFromNotifications,
     required this.onSearchSubmitted,
     required this.body,
   });
@@ -441,20 +458,26 @@ class _TopAppBar extends StatefulWidget {
   final bool compact;
   final bool narrow;
   final VoidCallback onOpenSettings;
+  final VoidCallback onOpenOrdersFromNotifications;
+  final VoidCallback onOpenCoreTeamFromNotifications;
   final ValueChanged<String> onSearchSubmitted;
   final VoidCallback onLogout;
   final String userName;
   final String userSubtitle;
+  final bool canSeeCoreTeamNotifications;
 
   const _TopAppBar({
     required this.title,
     required this.compact,
     required this.narrow,
     required this.onOpenSettings,
+    required this.onOpenOrdersFromNotifications,
+    required this.onOpenCoreTeamFromNotifications,
     required this.onSearchSubmitted,
     required this.onLogout,
     required this.userName,
     required this.userSubtitle,
+    required this.canSeeCoreTeamNotifications,
   });
 
   @override
@@ -466,20 +489,28 @@ class _TopAppBarState extends State<_TopAppBar> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final List<_ShellNotificationItem> _notifications =
       <_ShellNotificationItem>[];
+  final Set<String> _inventorySyncInFlight = <String>{};
   final Map<String, String> _knownOrderStatusByDocId = <String, String>{};
   final Map<String, String> _knownPaymentStatusByDocId = <String, String>{};
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ordersSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _usersSub;
   bool _orderSnapshotSeeded = false;
+  bool _userSnapshotSeeded = false;
+  final Set<String> _pendingUserIds = <String>{};
 
   @override
   void initState() {
     super.initState();
     _listenForOrderNotifications();
+    if (widget.canSeeCoreTeamNotifications) {
+      _listenForPendingUserNotifications();
+    }
   }
 
   @override
   void dispose() {
     _ordersSub?.cancel();
+    _usersSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -712,6 +743,10 @@ class _TopAppBarState extends State<_TopAppBar> {
                                   ),
                                   title: Text(item.title),
                                   subtitle: Text(item.message),
+                                  onTap: () {
+                                    Navigator.of(context).pop();
+                                    _openNotificationTarget(item.target);
+                                  },
                                   trailing: Text(
                                     _formatNotificationTime(item.createdAt),
                                     style: const TextStyle(
@@ -762,6 +797,9 @@ class _TopAppBarState extends State<_TopAppBar> {
                 _knownPaymentStatusByDocId[doc.id] = _paymentLabel(
                   _stringOr(data['paymentStatus'], fallback: 'pending'),
                 );
+                if (!_isInventorySynced(data)) {
+                  unawaited(_syncInventoryForOrder(doc));
+                }
               }
               _orderSnapshotSeeded = true;
               return;
@@ -789,6 +827,13 @@ class _TopAppBarState extends State<_TopAppBar> {
                   message: '$orderId was placed.',
                   icon: Iconsax.box,
                 );
+              }
+
+              if (change.type == DocumentChangeType.added ||
+                  change.type == DocumentChangeType.modified) {
+                if (!_isInventorySynced(data)) {
+                  unawaited(_syncInventoryForOrder(change.doc));
+                }
               }
 
               if (change.type == DocumentChangeType.modified) {
@@ -831,10 +876,130 @@ class _TopAppBarState extends State<_TopAppBar> {
         );
   }
 
+  bool _isInventorySynced(Map<String, dynamic> order) {
+    final sync = order['inventorySync'];
+    if (sync is! Map) return false;
+    final map = Map<String, dynamic>.from(sync);
+    return map['stockDeducted'] == true;
+  }
+
+  Future<void> _syncInventoryForOrder(
+    DocumentSnapshot<Map<String, dynamic>> orderDoc,
+  ) async {
+    if (_inventorySyncInFlight.contains(orderDoc.id)) return;
+    _inventorySyncInFlight.add(orderDoc.id);
+    try {
+      await _firestore.runTransaction((tx) async {
+        final freshOrder = await tx.get(orderDoc.reference);
+        final order = freshOrder.data();
+        if (!freshOrder.exists || order == null) return;
+        if (_isInventorySynced(order)) return;
+
+        final rawItems = order['items'];
+        if (rawItems is! List || rawItems.isEmpty) {
+          tx.set(orderDoc.reference, {
+            'inventorySync': {
+              'stockDeducted': true,
+              'deductedBy': 'admin_client_sync',
+              'deductedAt': FieldValue.serverTimestamp(),
+              'warningCount': 1,
+              'warnings': ['No valid items found in order.'],
+            },
+          }, SetOptions(merge: true));
+          return;
+        }
+
+        final consumeByProduct = <String, double>{};
+        for (final item in rawItems) {
+          if (item is! Map) continue;
+          final map = Map<String, dynamic>.from(item);
+          final productDocId = _normalizeProductDocId(map['productCode']);
+          if (productDocId.isEmpty) continue;
+          final qtyBase = _doubleOr(map['qtyBase']);
+          final qty = _doubleOr(map['qty']);
+          final conversion = _doubleOr(map['conversionToBaseUnit']);
+          final resolvedQtyBase = qtyBase > 0 ? qtyBase : (qty * conversion);
+          if (resolvedQtyBase <= 0) continue;
+          consumeByProduct.update(
+            productDocId,
+            (value) => value + resolvedQtyBase,
+            ifAbsent: () => resolvedQtyBase,
+          );
+        }
+
+        final warnings = <String>[];
+        for (final entry in consumeByProduct.entries) {
+          final productRef = _firestore
+              .collection(FirestoreCollections.products)
+              .doc(entry.key);
+          final productSnap = await tx.get(productRef);
+          if (!productSnap.exists) {
+            warnings.add('Missing product: ${entry.key}');
+            continue;
+          }
+          final product = productSnap.data() ?? <String, dynamic>{};
+          final inventory = _asMap(product['inventory']);
+          final currentAvailable =
+              _doubleOr(inventory['availableQtyBaseUnit']) > 0
+              ? _doubleOr(inventory['availableQtyBaseUnit'])
+              : _doubleOr(inventory['baseUnitQty']);
+          final requested = entry.value;
+          if (currentAvailable < requested) {
+            warnings.add(
+              'Stock low for ${entry.key}: requested ${requested.toStringAsFixed(2)}, available ${currentAvailable.toStringAsFixed(2)}',
+            );
+          }
+          final nextAvailable = (currentAvailable - requested).clamp(
+            0.0,
+            double.infinity,
+          );
+          tx.set(productRef, {
+            'inventory': {'availableQtyBaseUnit': nextAvailable},
+            'audit': {'updatedAt': FieldValue.serverTimestamp()},
+          }, SetOptions(merge: true));
+        }
+
+        tx.set(orderDoc.reference, {
+          'inventorySync': {
+            'stockDeducted': true,
+            'deductedBy': 'admin_client_sync',
+            'deductedAt': FieldValue.serverTimestamp(),
+            'warningCount': warnings.length,
+            'warnings': warnings.take(20).toList(),
+          },
+        }, SetOptions(merge: true));
+      });
+    } catch (_) {
+      // Keep silent in UI; this path retries on next order stream update.
+    } finally {
+      _inventorySyncInFlight.remove(orderDoc.id);
+    }
+  }
+
+  String _normalizeProductDocId(dynamic code) {
+    if (code is! String) return '';
+    return code.replaceAll('#', '').trim().toLowerCase();
+  }
+
+  Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((k, v) => MapEntry('$k', v));
+    }
+    return <String, dynamic>{};
+  }
+
+  double _doubleOr(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value.trim()) ?? 0;
+    return 0;
+  }
+
   void _pushNotification({
     required String title,
     required String message,
     required IconData icon,
+    _ShellNotificationTarget target = _ShellNotificationTarget.orders,
   }) {
     if (!mounted) return;
     setState(() {
@@ -845,12 +1010,110 @@ class _TopAppBarState extends State<_TopAppBar> {
           message: message,
           icon: icon,
           createdAt: DateTime.now(),
+          target: target,
         ),
       );
       if (_notifications.length > 100) {
         _notifications.removeRange(100, _notifications.length);
       }
     });
+  }
+
+  void _openNotificationTarget(_ShellNotificationTarget target) {
+    switch (target) {
+      case _ShellNotificationTarget.orders:
+        widget.onOpenOrdersFromNotifications();
+        break;
+      case _ShellNotificationTarget.coreTeam:
+        widget.onOpenCoreTeamFromNotifications();
+        break;
+    }
+  }
+
+  void _listenForPendingUserNotifications() {
+    _usersSub = _firestore
+        .collection(FirestoreCollections.users)
+        .snapshots()
+        .listen(
+          (snapshot) {
+            final currentPendingIds = <String>{};
+            for (final doc in snapshot.docs) {
+              final data = doc.data();
+              if (_isPendingUser(data)) {
+                currentPendingIds.add(doc.id);
+              }
+            }
+
+            if (!_userSnapshotSeeded) {
+              _pendingUserIds
+                ..clear()
+                ..addAll(currentPendingIds);
+              if (currentPendingIds.isNotEmpty) {
+                _pushNotification(
+                  title: 'Pending registrations',
+                  message:
+                      '${currentPendingIds.length} user(s) are waiting for approval (including salesmen).',
+                  icon: Iconsax.user_tag,
+                  target: _ShellNotificationTarget.coreTeam,
+                );
+              }
+              _userSnapshotSeeded = true;
+              return;
+            }
+
+            for (final change in snapshot.docChanges) {
+              final data = change.doc.data();
+              if (data == null) continue;
+              final isPending = _isPendingUser(data);
+              final id = change.doc.id;
+              final wasPending = _pendingUserIds.contains(id);
+
+              if (isPending && !wasPending) {
+                final name = _stringOr(
+                  data['fullName'],
+                  fallback: _stringOr(data['email'], fallback: 'Unknown user'),
+                );
+                final requestedRole = _stringOr(
+                  data['requestedRole'],
+                  fallback: _stringOr(data['role'], fallback: 'Staff'),
+                );
+                _pushNotification(
+                  title: 'New pending registration',
+                  message: '$name requested $requestedRole access.',
+                  icon: Iconsax.profile_2user,
+                  target: _ShellNotificationTarget.coreTeam,
+                );
+                _pendingUserIds.add(id);
+              } else if (!isPending && wasPending) {
+                _pendingUserIds.remove(id);
+              }
+            }
+          },
+          onError: (_) {
+            _pushNotification(
+              title: 'Notification issue',
+              message:
+                  'Pending registration updates are temporarily unavailable.',
+              icon: Iconsax.warning_2,
+              target: _ShellNotificationTarget.coreTeam,
+            );
+          },
+        );
+  }
+
+  bool _isPendingUser(Map<String, dynamic> user) {
+    final approval = _stringOr(
+      user['approvalStatus'],
+      fallback: 'approved',
+    ).toLowerCase();
+    if (approval != 'pending') return false;
+    final requestedRole = _stringOr(
+      user['requestedRole'],
+      fallback: _stringOr(user['role'], fallback: ''),
+    ).toLowerCase();
+    return requestedRole.contains('staff') ||
+        requestedRole.contains('salesman') ||
+        requestedRole.contains('sales');
   }
 
   String _statusLabel(String raw) {
@@ -1018,6 +1281,7 @@ class _ShellNotificationItem {
   final String message;
   final IconData icon;
   final DateTime createdAt;
+  final _ShellNotificationTarget target;
   bool read = false;
 
   _ShellNotificationItem({
@@ -1025,5 +1289,8 @@ class _ShellNotificationItem {
     required this.message,
     required this.icon,
     required this.createdAt,
+    required this.target,
   });
 }
+
+enum _ShellNotificationTarget { orders, coreTeam }
