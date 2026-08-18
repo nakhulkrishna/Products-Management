@@ -106,6 +106,7 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
   String? _categoryFilterKey;
   int _currentPage = 1;
   bool _showCategoriesScreen = false;
+  bool _categoryChosen = false;
   bool _showAddProductForm = false;
   _Product? _editingProduct;
   bool _isLoadingProducts = true;
@@ -404,6 +405,10 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
       );
     }
 
+    if (!_categoryChosen) {
+      return _buildCategoryBrowseView();
+    }
+
     final filtered = _filteredProducts;
     final visible = _visibleProducts;
     final selectedCount = filtered
@@ -423,6 +428,29 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _categoryChosen = false;
+                    _categoryFilterKey = null;
+                    _currentPage = 1;
+                    _selectedIds.clear();
+                  });
+                },
+                icon: const Icon(Iconsax.arrow_left_2, size: 16),
+                label: Text(
+                  'Categories  /  $_selectedCategoryLabel',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF2EA8A5),
+                  padding: EdgeInsets.zero,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
             _buildHeader(isCompact),
             const SizedBox(height: 14),
             isNarrow
@@ -526,6 +554,195 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
           ],
         );
       },
+    );
+  }
+
+  int _productCountForCategory(String? categoryLower) {
+    if (categoryLower == null) return _products.length;
+    return _products
+        .where((p) => p.category.trim().toLowerCase() == categoryLower)
+        .length;
+  }
+
+  void _enterCategory(String? categoryLower) {
+    setState(() {
+      _categoryFilterKey = categoryLower;
+      _categoryChosen = true;
+      _currentPage = 1;
+      _selectedIds.clear();
+    });
+  }
+
+  Widget _buildCategoryBrowseView() {
+    final categories = _availableCategories;
+    final headerActions = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _headerActionButton(
+          onTap: () {
+            setState(() => _showCategoriesScreen = true);
+          },
+          icon: Iconsax.category,
+          label: 'Manage Categories',
+        ),
+        _headerActionButton(
+          onTap: () {
+            setState(() => _showAddProductForm = true);
+          },
+          icon: Iconsax.add,
+          label: 'Add Product',
+          highlighted: true,
+        ),
+      ],
+    );
+    const headerTitle = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Categories',
+          style: TextStyle(
+            fontSize: 30,
+            height: 1.1,
+            color: Color(0xFF111827),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        SizedBox(height: 4),
+        Text(
+          'Pick a category to view its products.',
+          style: TextStyle(
+            color: Color(0xFF8A94A6),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 700) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  headerTitle,
+                  const SizedBox(height: 10),
+                  headerActions,
+                ],
+              );
+            }
+            return Row(
+              children: [
+                const Expanded(child: headerTitle),
+                headerActions,
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 18),
+        if (_isLoadingProducts)
+          const Expanded(child: Center(child: CircularProgressIndicator()))
+        else
+          Expanded(
+            child: SingleChildScrollView(
+              child: Wrap(
+                spacing: 14,
+                runSpacing: 14,
+                children: [
+                  _categoryCard(
+                    label: 'All Products',
+                    count: _productCountForCategory(null),
+                    icon: Iconsax.box,
+                    iconColor: const Color(0xFF2EA8A5),
+                    iconBackground: const Color(0xFFE6FFFA),
+                    onTap: () => _enterCategory(null),
+                  ),
+                  ...categories.map((name) {
+                    final visual = _visualByCategory(name);
+                    return _categoryCard(
+                      label: name,
+                      count: _productCountForCategory(name.toLowerCase()),
+                      icon: visual.$1,
+                      iconColor: visual.$2,
+                      iconBackground: visual.$3,
+                      onTap: () => _enterCategory(name.toLowerCase()),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _categoryCard({
+    required String label,
+    required int count,
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBackground,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: 230,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              height: 44,
+              width: 44,
+              decoration: BoxDecoration(
+                color: iconBackground,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF111827),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$count product${count == 1 ? '' : 's'}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF8A94A6),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Iconsax.arrow_right_3,
+              size: 16,
+              color: Color(0xFF9CA3AF),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
