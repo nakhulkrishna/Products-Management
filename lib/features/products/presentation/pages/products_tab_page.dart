@@ -106,7 +106,9 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
   String? _categoryFilterKey;
   int _currentPage = 1;
   bool _showCategoriesScreen = false;
-  bool _categoryChosen = false;
+  // Show the full products table immediately; the category browse view is
+  // still reachable via the breadcrumb button above the table.
+  bool _categoryChosen = true;
   bool _showAddProductForm = false;
   _Product? _editingProduct;
   bool _isLoadingProducts = true;
