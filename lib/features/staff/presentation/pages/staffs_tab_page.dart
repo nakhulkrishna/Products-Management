@@ -365,14 +365,16 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
     });
     _salesmenSub = _firestore
         .collection(FirestoreCollections.staffSalesmen)
-        .orderBy('nameLower')
         .snapshots()
         .listen(
           (snapshot) {
             final items = snapshot.docs
                 .map(_salesmanFromDoc)
                 .whereType<_Salesman>()
-                .toList();
+                .toList()
+              ..sort(
+                (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+              );
             if (items.isEmpty && _seedSalesmen.isNotEmpty) {
               // Keep reference to sample data for optional future seeding tools.
             }
