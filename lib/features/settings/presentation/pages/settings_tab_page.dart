@@ -26,7 +26,7 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
 
   bool _isSavingProfile = false;
   bool _isExportingReport = false;
-  String _whatsAppOrderNumber = '+97455001122';
+  String _whatsAppOrderNumber = '';
 
   bool _deactivated = false;
 
@@ -82,6 +82,24 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         ...AccessControl.parsePermissions(data[AccessControl.permissionsField]),
       };
     });
+
+    await _loadSharedOrderWhatsAppNumber();
+  }
+
+  /// The order WhatsApp number is a single shared setting, not per-admin.
+  /// Read it from the shared config the salesman app uses.
+  Future<void> _loadSharedOrderWhatsAppNumber() async {
+    try {
+      final config = await _firestore
+          .collection('catalog_app_config')
+          .doc('order_whatsapp')
+          .get();
+      final shared = _valueOr(config.data()?['number'], fallback: '');
+      if (!mounted || shared.isEmpty) return;
+      setState(() => _whatsAppOrderNumber = shared);
+    } catch (_) {
+      // Keep whatever was loaded from the profile.
+    }
   }
 
   @override
@@ -447,7 +465,9 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         _settingRow(
           icon: Iconsax.message,
           title: 'Order WhatsApp Number',
-          subtitle: 'Current: $_whatsAppOrderNumber',
+          subtitle: _whatsAppOrderNumber.isEmpty
+              ? 'Not set'
+              : 'Current: $_whatsAppOrderNumber',
           trailing: _outlineActionButton(
             icon: Iconsax.edit,
             label: 'Edit',
@@ -530,7 +550,9 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         _settingRow(
           icon: Iconsax.message,
           title: 'WhatsApp Integration',
-          subtitle: 'Current: $_whatsAppOrderNumber',
+          subtitle: _whatsAppOrderNumber.isEmpty
+              ? 'Not set'
+              : 'Current: $_whatsAppOrderNumber',
           trailing: _outlineActionButton(
             icon: Iconsax.edit,
             label: 'Edit',
@@ -1050,6 +1072,34 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
         },
         SetOptions(merge: true),
       );
+
+      // Mirror the order WhatsApp number to the locations the salesman app
+      // reads: the shared catalog config (admin-writable) and the legacy
+      // order_whatsapp document kept for backwards compatibility.
+      // Staff cannot read other users' profiles, so the per-user field alone
+      // is not reachable from the app.
+      // Mirrored best-effort: a denied write here must not fail the save.
+      try {
+        await _firestore
+            .collection('catalog_app_config')
+            .doc('order_whatsapp')
+            .set({
+              'number': _whatsAppOrderNumber,
+              'updatedAt': FieldValue.serverTimestamp(),
+              'updatedByUid': user.uid,
+            }, SetOptions(merge: true));
+      } catch (error) {
+        debugPrint('[Settings] shared WhatsApp config not written: $error');
+      }
+
+      try {
+        await _firestore.collection('order_whatsapp').doc('main_number').set({
+          'number': _whatsAppOrderNumber,
+          'updated_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (error) {
+        debugPrint('[Settings] legacy WhatsApp doc not written: $error');
+      }
       return true;
     } catch (error) {
       if (mounted) {
