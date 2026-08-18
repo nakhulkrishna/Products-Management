@@ -645,6 +645,19 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
         const SizedBox(height: 18),
         if (_isLoadingProducts)
           const Expanded(child: Center(child: CircularProgressIndicator()))
+        else if (categories.isEmpty)
+          const Expanded(
+            child: Center(
+              child: Text(
+                'No categories yet.\nUse Manage Categories to create one.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFF8A94A6),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          )
         else
           Expanded(
             child: SingleChildScrollView(
@@ -652,14 +665,6 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
                 spacing: 14,
                 runSpacing: 14,
                 children: [
-                  _categoryCard(
-                    label: 'All Products',
-                    count: _productCountForCategory(null),
-                    icon: Iconsax.box,
-                    iconColor: const Color(0xFF2EA8A5),
-                    iconBackground: const Color(0xFFE6FFFA),
-                    onTap: () => _enterCategory(null),
-                  ),
                   ...categories.map((name) {
                     final visual = _visualByCategory(name);
                     return _categoryCard(
