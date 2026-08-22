@@ -70,7 +70,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
                   Text(
                     _isLogin
                         ? 'Sign in to continue managing products.'
-                        : 'New staff/salesman accounts require admin approval before access.',
+                        : 'Create an account to get started.',
                     style: const TextStyle(
                       color: Color(0xFF6B7280),
                       fontWeight: FontWeight.w500,
@@ -288,7 +288,7 @@ class _AuthPageState extends ConsumerState<AuthPage> {
     } on FirebaseException catch (e) {
       if (e.plugin == 'cloud_firestore' && e.code == 'permission-denied') {
         _showMessage(
-          'Signed in, but Firestore access is denied. Contact admin to approve/activate your account.',
+          'Signed in, but Firestore access is denied. Contact an admin.',
           isError: true,
         );
       } else {

@@ -12,7 +12,7 @@ enum _StaffStatus { active, onLeave, inactive }
 
 enum _StaffFilter { all, active, onLeave, inactive }
 
-enum _SalesmanAction { view, edit, deleteImage, toggleStatus, delete }
+enum _SalesmanAction { view, edit, deleteImage, delete }
 
 enum _SalesMarketAccess { both, hyperOnly, localOnly }
 
@@ -527,25 +527,6 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
     return refs;
   }
 
-  Future<void> _setLinkedUserAccessByEmails(
-    Set<String> emails, {
-    required bool active,
-  }) async {
-    final refs = await _linkedUserRefsByEmails(emails);
-    if (refs.isEmpty) return;
-    final batch = _firestore.batch();
-    for (final ref in refs) {
-      batch.set(ref, {
-        'isActive': active,
-        if (active) 'approvalStatus': 'approved',
-        if (active) 'approvedAt': FieldValue.serverTimestamp(),
-        if (!active) 'approvalStatus': 'deactivated',
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    }
-    await batch.commit();
-  }
-
   Future<void> _deleteLinkedUserProfilesByEmails(Set<String> emails) async {
     final refs = await _linkedUserRefsByEmails(emails);
     if (refs.isEmpty) return;
@@ -811,13 +792,6 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
                   child: const Text('Select All'),
                 ),
                 TextButton.icon(
-                  onPressed: selectedCount == 0
-                      ? null
-                      : _deactivateSelectedStaff,
-                  icon: const Icon(Iconsax.user_minus, size: 16),
-                  label: const Text('Deactivate'),
-                ),
-                TextButton.icon(
                   onPressed: selectedCount == 0 ? null : _deleteSelectedStaff,
                   icon: const Icon(Iconsax.trash, size: 16),
                   label: const Text('Delete Selected'),
@@ -888,71 +862,14 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
   }
 
   Widget _buildHeader(bool compact) {
-    if (compact) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Staffs',
-            style: TextStyle(
-              fontSize: 30,
-              height: 1.1,
-              color: Color(0xFF111827),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Manage sales team access, activity, and status from one place.',
-            style: TextStyle(
-              color: Color(0xFF8A94A6),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 10),
-          _headerActionButton(
-            onTap: _addSalesman,
-            icon: Iconsax.add,
-            label: 'Add Salesman',
-            highlighted: true,
-          ),
-        ],
-      );
-    }
-
-    return Row(
-      children: [
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Salesman List',
-                style: TextStyle(
-                  fontSize: 30,
-                  height: 1.1,
-                  color: Color(0xFF111827),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Monitor staff salesmen performance, targets, and status.',
-                style: TextStyle(
-                  color: Color(0xFF8A94A6),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-        _headerActionButton(
-          onTap: _addSalesman,
-          icon: Iconsax.add,
-          label: 'Add Salesman',
-          highlighted: true,
-        ),
-      ],
+    return Align(
+      alignment: compact ? Alignment.centerLeft : Alignment.centerRight,
+      child: _headerActionButton(
+        onTap: _addSalesman,
+        icon: Iconsax.add,
+        label: 'Add Salesman',
+        highlighted: true,
+      ),
     );
   }
 
@@ -1392,7 +1309,6 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
 
   Widget _buildSalesmanActionMenu(_Salesman salesman) {
     final canDeleteImage = salesman.imageUrl != null;
-    final isInactive = salesman.status == _StaffStatus.inactive;
     return Align(
       alignment: Alignment.centerLeft,
       child: PopupMenuButton<_SalesmanAction>(
@@ -1450,20 +1366,6 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
               ],
             ),
           ),
-          PopupMenuItem<_SalesmanAction>(
-            value: _SalesmanAction.toggleStatus,
-            child: Row(
-              children: [
-                Icon(
-                  isInactive ? Iconsax.user_add : Iconsax.user_minus,
-                  size: 18,
-                  color: const Color(0xFF2EA8A5),
-                ),
-                const SizedBox(width: 10),
-                Text(isInactive ? 'Activate' : 'Deactivate'),
-              ],
-            ),
-          ),
           const PopupMenuItem<_SalesmanAction>(
             value: _SalesmanAction.delete,
             child: Row(
@@ -1494,9 +1396,6 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
         if (salesman.imageUrl != null) {
           await _removeStaffImage(salesman);
         }
-        break;
-      case _SalesmanAction.toggleStatus:
-        await _toggleDeactivateStaff(salesman);
         break;
       case _SalesmanAction.delete:
         await _deleteStaff(salesman);
@@ -1851,94 +1750,6 @@ class _StaffsTabPageState extends ConsumerState<StaffsTabPage> {
     } catch (error) {
       if (!mounted) return;
       _toast('Failed to update salesman: $error');
-    }
-  }
-
-  Future<void> _deactivateSelectedStaff() async {
-    final ids = Set<String>.from(_selectedIds);
-    if (ids.isEmpty) return;
-    final linkedEmails = await _linkedEmailsForStaffIds(ids);
-    final confirmed = await _showRightSheet<bool>(
-      title: 'Deactivate Selected',
-      icon: Iconsax.user_minus,
-      body: Text('Deactivate ${ids.length} selected staff member(s)?'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Deactivate'),
-        ),
-      ],
-    );
-    if (confirmed != true) return;
-
-    try {
-      final batch = _firestore.batch();
-      for (final id in ids) {
-        batch.set(
-          _firestore.collection(FirestoreCollections.staffSalesmen).doc(id),
-          {
-            'status': _statusToString(_StaffStatus.inactive),
-            'updatedAt': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
-      }
-      await batch.commit();
-      await _setLinkedUserAccessByEmails(linkedEmails, active: false);
-      if (!mounted) return;
-      _toast('Selected staff deactivated.');
-    } catch (error) {
-      if (!mounted) return;
-      _toast('Failed to deactivate selected staff: $error');
-    }
-  }
-
-  Future<void> _toggleDeactivateStaff(_Salesman staff) async {
-    final shouldDeactivate = staff.status != _StaffStatus.inactive;
-    final confirmed = await _showRightSheet<bool>(
-      title: shouldDeactivate ? 'Deactivate Staff' : 'Activate Staff',
-      icon: shouldDeactivate ? Iconsax.user_minus : Iconsax.user_add,
-      body: Text(
-        shouldDeactivate
-            ? 'Deactivate ${staff.name}?'
-            : 'Activate ${staff.name}?',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: Text(shouldDeactivate ? 'Deactivate' : 'Activate'),
-        ),
-      ],
-    );
-    if (confirmed != true) return;
-
-    try {
-      await _firestore
-          .collection(FirestoreCollections.staffSalesmen)
-          .doc(staff.id)
-          .set({
-            'status': _statusToString(
-              shouldDeactivate ? _StaffStatus.inactive : _StaffStatus.active,
-            ),
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-      await _setLinkedUserAccessByEmails(
-        {staff.email},
-        active: !shouldDeactivate,
-      );
-      if (!mounted) return;
-      _toast(shouldDeactivate ? 'Staff deactivated.' : 'Staff activated.');
-    } catch (error) {
-      if (!mounted) return;
-      _toast('Failed to update status: $error');
     }
   }
 

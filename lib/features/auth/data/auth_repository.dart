@@ -35,9 +35,7 @@ class AuthRepository {
     required String region,
     required String department,
   }) async {
-    final requestedRole = appUserRoleFromRaw(role);
     const assignedRole = AppUserRole.staff;
-    const requiresApproval = true;
     final credential = await _firebaseAuth.createUserWithEmailAndPassword(
       email: email,
       password: password,
@@ -53,11 +51,9 @@ class AuthRepository {
         fullName: fullName.trim(),
         email: email.trim(),
         role: assignedRole.firestoreValue,
-        requestedRole: requestedRole.firestoreValue,
         phone: phone.trim(),
         region: region.trim(),
         department: department.trim(),
-        requiresApproval: requiresApproval,
       );
     }
     return credential;
@@ -86,30 +82,25 @@ class AuthRepository {
     required String fullName,
     required String email,
     required String role,
-    required String requestedRole,
     required String phone,
     required String region,
     required String department,
-    required bool requiresApproval,
   }) {
     final now = FieldValue.serverTimestamp();
-    final approvalStatus = requiresApproval ? 'pending' : 'approved';
     final normalizedRole = appUserRoleFromRaw(role);
     return _firestore.collection(FirestoreCollections.users).doc(uid).set({
       'uid': uid,
       'fullName': fullName,
       'email': email,
       'role': normalizedRole.firestoreValue,
-      'requestedRole': appUserRoleFromRaw(requestedRole).firestoreValue,
       'phone': phone.isEmpty ? '+974 5500 1122' : phone,
       'region': region.isEmpty ? 'Doha' : region,
       'department': department.isEmpty ? 'Commercial' : department,
-      'approvalStatus': approvalStatus,
-      'isActive': !requiresApproval,
+      'approvalStatus': 'approved',
+      'isActive': true,
       AccessControl.permissionsField: AccessControl.defaultPermissionsForRole(
         normalizedRole,
       ),
-      if (!requiresApproval) 'approvedAt': now,
       'updatedAt': now,
       'createdAt': now,
     }, SetOptions(merge: true));

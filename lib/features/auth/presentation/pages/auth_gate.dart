@@ -41,28 +41,6 @@ class AuthGate extends ConsumerWidget {
                 onLogout: () => ref.read(authRepositoryProvider).signOut(),
               );
             }
-            final approvalStatus =
-                profile['approvalStatus']?.toString().trim().toLowerCase() ??
-                'approved';
-            final isActive = profile['isActive'] is bool
-                ? profile['isActive'] as bool
-                : true;
-            final normalizedRole = profileRole.toLowerCase();
-            final isPrivilegedRole =
-                normalizedRole.contains('admin') ||
-                normalizedRole.contains('developer');
-            final requiresApproval = !isPrivilegedRole;
-            final isApproved = approvalStatus == 'approved';
-            if ((!isApproved && requiresApproval) || !isActive) {
-              return _AccountApprovalPendingView(
-                title: 'Approval Required',
-                message: _approvalMessageForStatus(
-                  approvalStatus: approvalStatus,
-                  isActive: isActive,
-                ),
-                onLogout: () => ref.read(authRepositoryProvider).signOut(),
-              );
-            }
             return const WebShellPage();
           },
           loading: () =>
@@ -110,23 +88,6 @@ class AuthGate extends ConsumerWidget {
         ),
       ),
     );
-  }
-}
-
-String _approvalMessageForStatus({
-  required String approvalStatus,
-  required bool isActive,
-}) {
-  if (!isActive) {
-    return 'Your account is currently inactive. Please contact an admin.';
-  }
-  switch (approvalStatus) {
-    case 'pending':
-      return 'Your registration is pending admin approval. Please wait.';
-    case 'rejected':
-      return 'Your registration was rejected. Please contact an admin.';
-    default:
-      return 'Your account is not approved yet. Please contact an admin.';
   }
 }
 

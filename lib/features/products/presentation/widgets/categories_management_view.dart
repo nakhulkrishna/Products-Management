@@ -1,15 +1,29 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:products_catelogs/features/products/data/repositories/products_repository.dart';
 
 class CategoriesManagementView extends StatefulWidget {
   final List<ProductCategoryRecord> categories;
-  final Future<void> Function(String name) onCreateCategory;
+  final Future<void> Function(
+    String name, {
+    Uint8List? imageBytes,
+    String? imageFileName,
+  })
+  onCreateCategory;
   final Future<void> Function({
     required String categoryId,
     required String newName,
   })
   onRenameCategory;
+  final Future<void> Function({
+    required String categoryId,
+    required Uint8List imageBytes,
+    required String imageFileName,
+  })
+  onSetCategoryImage;
   final Future<void> Function(String categoryId) onDeleteCategory;
   final VoidCallback onBack;
 
@@ -18,6 +32,7 @@ class CategoriesManagementView extends StatefulWidget {
     required this.categories,
     required this.onCreateCategory,
     required this.onRenameCategory,
+    required this.onSetCategoryImage,
     required this.onDeleteCategory,
     required this.onBack,
   });
@@ -33,6 +48,8 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
 
   String _query = '';
   bool _busy = false;
+  Uint8List? _newCategoryImageBytes;
+  String? _newCategoryImageName;
 
   @override
   void dispose() {
@@ -129,6 +146,8 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
                   ),
                 ),
                 const SizedBox(height: 10),
+                _newImagePickerButton(),
+                const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
@@ -151,6 +170,8 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
                   ),
                 ),
                 const SizedBox(width: 10),
+                _newImagePickerButton(),
+                const SizedBox(width: 10),
                 FilledButton.icon(
                   onPressed: _busy ? null : _addCategory,
                   icon: const Icon(Iconsax.add),
@@ -159,6 +180,45 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
               ],
             ),
     );
+  }
+
+  Widget _newImagePickerButton() {
+    final hasImage = _newCategoryImageBytes != null;
+    return OutlinedButton.icon(
+      onPressed: _busy ? null : _pickNewCategoryImage,
+      icon: hasImage
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Image.memory(
+                _newCategoryImageBytes!,
+                width: 22,
+                height: 22,
+                fit: BoxFit.cover,
+              ),
+            )
+          : const Icon(Iconsax.gallery_add, size: 18),
+      label: Text(hasImage ? 'Change Image' : 'Add Image'),
+    );
+  }
+
+  Future<void> _pickNewCategoryImage() async {
+    final picked = await _pickSingleImage();
+    if (picked == null) return;
+    setState(() {
+      _newCategoryImageBytes = picked.bytes;
+      _newCategoryImageName = picked.name;
+    });
+  }
+
+  Future<({Uint8List bytes, String name})?> _pickSingleImage() async {
+    final result = await FilePicker.platform.pickFiles(
+      withData: true,
+      type: FileType.image,
+    );
+    final file = result?.files.firstOrNull;
+    final bytes = file?.bytes;
+    if (file == null || bytes == null) return null;
+    return (bytes: bytes, name: file.name);
   }
 
   Widget _buildListCard(List<ProductCategoryRecord> filtered) {
@@ -245,6 +305,37 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
       ),
       child: Row(
         children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: category.imageUrl == null
+                ? Container(
+                    width: 36,
+                    height: 36,
+                    color: const Color(0xFFF3F4F6),
+                    child: const Icon(
+                      Iconsax.gallery,
+                      size: 18,
+                      color: Color(0xFF9CA3AF),
+                    ),
+                  )
+                : Image.network(
+                    category.imageUrl!,
+                    width: 36,
+                    height: 36,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 36,
+                      height: 36,
+                      color: const Color(0xFFF3F4F6),
+                      child: const Icon(
+                        Iconsax.gallery_slash,
+                        size: 18,
+                        color: Color(0xFF9CA3AF),
+                      ),
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               category.name,
@@ -283,6 +374,9 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
                 case 'rename':
                   _renameCategory(category);
                   break;
+                case 'image':
+                  _changeCategoryImage(category);
+                  break;
                 case 'delete':
                   _deleteCategory(category);
                   break;
@@ -296,6 +390,20 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
                     Icon(Iconsax.edit, size: 18, color: Color(0xFF374151)),
                     SizedBox(width: 10),
                     Text('Rename'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'image',
+                child: Row(
+                  children: [
+                    Icon(
+                      Iconsax.gallery_edit,
+                      size: 18,
+                      color: Color(0xFF2277B8),
+                    ),
+                    SizedBox(width: 10),
+                    Text('Change Image'),
                   ],
                 ),
               ),
@@ -322,9 +430,17 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
 
     setState(() => _busy = true);
     try {
-      await widget.onCreateCategory(value);
+      await widget.onCreateCategory(
+        value,
+        imageBytes: _newCategoryImageBytes,
+        imageFileName: _newCategoryImageName,
+      );
       if (!mounted) return;
       _newCategoryController.clear();
+      setState(() {
+        _newCategoryImageBytes = null;
+        _newCategoryImageName = null;
+      });
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Category added.')));
@@ -437,6 +553,31 @@ class _CategoriesManagementViewState extends State<CategoriesManagementView> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to rename category: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _changeCategoryImage(ProductCategoryRecord category) async {
+    final picked = await _pickSingleImage();
+    if (picked == null) return;
+
+    setState(() => _busy = true);
+    try {
+      await widget.onSetCategoryImage(
+        categoryId: category.id,
+        imageBytes: picked.bytes,
+        imageFileName: picked.name,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Category image updated.')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update category image: $error')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);

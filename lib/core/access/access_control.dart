@@ -5,23 +5,19 @@ class AccessControl {
   static const String permissionsField = 'permissions';
 
   static const Map<SidebarTab, String> permissionKeyByTab = {
-    SidebarTab.dashboard: 'dashboard',
     SidebarTab.products: 'products',
     SidebarTab.orders: 'orders',
     SidebarTab.customers: 'customers',
     SidebarTab.staffs: 'staffs',
-    SidebarTab.coreTeam: 'coreTeam',
     SidebarTab.settings: 'settings',
   };
 
   static const Map<String, SidebarTab> tabByPermissionKey = {
-    'dashboard': SidebarTab.dashboard,
     'products': SidebarTab.products,
     'orders': SidebarTab.orders,
     'customers': SidebarTab.customers,
     'staff': SidebarTab.staffs,
     'staffs': SidebarTab.staffs,
-    'coreteam': SidebarTab.coreTeam,
     'settings': SidebarTab.settings,
   };
 
@@ -31,11 +27,9 @@ class AccessControl {
         return SidebarTab.values;
       case AppUserRole.developer:
         return const [
-          SidebarTab.dashboard,
           SidebarTab.products,
           SidebarTab.orders,
           SidebarTab.customers,
-          SidebarTab.coreTeam,
           SidebarTab.settings,
         ];
       case AppUserRole.staff:

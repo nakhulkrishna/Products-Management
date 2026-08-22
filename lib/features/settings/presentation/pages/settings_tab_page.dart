@@ -8,7 +8,6 @@ import 'package:products_catelogs/core/access/access_control.dart';
 import 'package:products_catelogs/core/access/user_role.dart';
 import 'package:products_catelogs/core/constants/firestore_collections.dart';
 import 'package:products_catelogs/core/utils/file_download.dart';
-import 'package:products_catelogs/features/shell/domain/sidebar_tab.dart';
 
 class SettingsTabPage extends StatefulWidget {
   final VoidCallback? onLogout;
@@ -28,7 +27,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
   bool _isExportingReport = false;
   String _whatsAppOrderNumber = '';
 
-  bool _deactivated = false;
 
   String _currency = 'QAR';
   String _language = 'English';
@@ -74,8 +72,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
       _currency = _valueOr(data['currency'], fallback: _currency);
       _language = _valueOr(data['language'], fallback: _language);
       _timezone = _valueOr(data['timezone'], fallback: _timezone);
-      final active = data['isActive'] is bool ? data['isActive'] as bool : true;
-      _deactivated = !active;
       final role = appUserRoleFromRaw(_role);
       _permissions = {
         ...AccessControl.defaultPermissionsForRole(role),
@@ -113,8 +109,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(),
-              const SizedBox(height: 14),
               isNarrow
                   ? Column(
                       children: [
@@ -137,42 +131,11 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
                       ),
                     ),
               const SizedBox(height: 12),
-              _buildSecuritySection(isNarrow),
-              const SizedBox(height: 12),
-              _buildPreferenceSection(),
-              const SizedBox(height: 12),
               _buildReportsAndIntegrationSection(),
-              const SizedBox(height: 12),
-              _buildDangerZone(),
             ],
           ),
         );
       },
-    );
-  }
-
-  Widget _buildHeader() {
-    return const Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Settings',
-          style: TextStyle(
-            fontSize: 30,
-            height: 1.1,
-            color: Color(0xFF111827),
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        SizedBox(height: 4),
-        Text(
-          'Manage account profile, security, preferences, and access controls.',
-          style: TextStyle(
-            color: Color(0xFF8A94A6),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
     );
   }
 
@@ -276,12 +239,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             subtitle: 'Send reset link and force new credentials',
             onTap: _confirmResetPassword,
           ),
-          _actionTile(
-            icon: Iconsax.profile_2user,
-            title: 'Manage Team Permissions',
-            subtitle: 'Roles and module access controls',
-            onTap: _managePermissions,
-          ),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -358,186 +315,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildSecuritySection(bool isNarrow) {
-    return _sectionCard(
-      title: 'Security',
-      subtitle: 'Protect your account and control active sessions.',
-      children: [
-        _settingRow(
-          icon: Iconsax.password_check,
-          title: 'Reset Password',
-          subtitle: 'Recommended every 90 days',
-          trailing: _outlineActionButton(
-            icon: Iconsax.key,
-            label: 'Reset',
-            onTap: _confirmResetPassword,
-          ),
-        ),
-        _settingRow(
-          icon: Iconsax.monitor,
-          title: 'Active Sessions',
-          subtitle: _sessionSubtitle,
-          trailing: _outlineActionButton(
-            icon: Iconsax.close_circle,
-            label: isNarrow ? 'Manage' : 'Manage Sessions',
-            onTap: _manageSessions,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPreferenceSection() {
-    return _sectionCard(
-      title: 'Preferences',
-      subtitle: 'Configure regional and display preferences.',
-      children: [
-        _settingRow(
-          icon: Iconsax.money,
-          title: 'Currency',
-          subtitle: 'Default transaction currency',
-          trailing: PopupMenuButton<String>(
-            color: Colors.white,
-            surfaceTintColor: Colors.white,
-            elevation: 8,
-            shadowColor: const Color(0x1A0F172A),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            offset: const Offset(0, 42),
-            onSelected: _updateCurrency,
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'QAR', child: Text('QAR')),
-              PopupMenuItem(value: 'USD', child: Text('USD')),
-            ],
-            child: _pillButton(_currency),
-          ),
-        ),
-        _settingRow(
-          icon: Iconsax.language_square,
-          title: 'Language',
-          subtitle: 'Interface language',
-          trailing: PopupMenuButton<String>(
-            color: Colors.white,
-            surfaceTintColor: Colors.white,
-            elevation: 8,
-            shadowColor: const Color(0x1A0F172A),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            offset: const Offset(0, 42),
-            onSelected: _updateLanguage,
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'English', child: Text('English')),
-              PopupMenuItem(value: 'Arabic', child: Text('Arabic')),
-            ],
-            child: _pillButton(_language),
-          ),
-        ),
-        _settingRow(
-          icon: Iconsax.timer_1,
-          title: 'Timezone',
-          subtitle: 'Used for reports and schedules',
-          trailing: PopupMenuButton<String>(
-            color: Colors.white,
-            surfaceTintColor: Colors.white,
-            elevation: 8,
-            shadowColor: const Color(0x1A0F172A),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            offset: const Offset(0, 42),
-            onSelected: _updateTimezone,
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'Asia/Qatar (GMT+3)',
-                child: Text('Asia/Qatar (GMT+3)'),
-              ),
-              PopupMenuItem(value: 'UTC (GMT+0)', child: Text('UTC (GMT+0)')),
-            ],
-            child: _pillButton(_timezone),
-          ),
-        ),
-        _settingRow(
-          icon: Iconsax.message,
-          title: 'Order WhatsApp Number',
-          subtitle: _whatsAppOrderNumber.isEmpty
-              ? 'Not set'
-              : 'Current: $_whatsAppOrderNumber',
-          trailing: _outlineActionButton(
-            icon: Iconsax.edit,
-            label: 'Edit',
-            onTap: _configureWhatsAppNumber,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDangerZone() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF7F7),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFF7D2D6)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Danger Zone',
-            style: TextStyle(
-              color: Color(0xFFB4232A),
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _deactivated
-                ? 'Account is currently marked as deactivated.'
-                : 'Sensitive account actions. Use carefully.',
-            style: const TextStyle(
-              color: Color(0xFF9E4A53),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              OutlinedButton.icon(
-                onPressed: _confirmLogout,
-                icon: const Icon(Iconsax.logout),
-                label: const Text('Logout'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFFB4232A),
-                  side: const BorderSide(color: Color(0xFFF1AAB1)),
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: _toggleDeactivateAccount,
-                icon: Icon(
-                  _deactivated ? Iconsax.user_add : Iconsax.user_remove,
-                ),
-                label: Text(
-                  _deactivated ? 'Reactivate Account' : 'Deactivate Account',
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFFB4232A),
-                  side: const BorderSide(color: Color(0xFFF1AAB1)),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -693,34 +470,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     );
   }
 
-  Widget _pillButton(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFD9DFE8)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            text,
-            style: const TextStyle(
-              color: Color(0xFF374151),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(width: 6),
-          const Icon(Iconsax.arrow_down_1, size: 18),
-        ],
-      ),
-    );
-  }
-
-  String get _sessionSubtitle {
-    return 'Sign out this device. Global revoke needs backend support.';
-  }
 
   Future<void> _editProfile() async {
     final fullNameController = TextEditingController(text: _fullName);
@@ -822,158 +571,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     }
   }
 
-  Future<void> _managePermissions() async {
-    final localPermissions = Map<String, bool>.from(_permissions);
-    final saved = await _showSideSheet<bool>(
-      title: 'Team Permissions',
-      body: StatefulBuilder(
-        builder: (context, setDialogState) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: SidebarTab.values.map((tab) {
-              final permissionKey = AccessControl.permissionKey(tab);
-              return SwitchListTile(
-                dense: true,
-                title: Text(tab.label),
-                value: localPermissions[permissionKey] ?? false,
-                onChanged: (value) {
-                  setDialogState(() => localPermissions[permissionKey] = value);
-                },
-              );
-            }).toList(),
-          );
-        },
-      ),
-      actions: [
-        OutlinedButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () async {
-            final navigator = Navigator.of(context);
-            setState(() {
-              _permissions
-                ..clear()
-                ..addAll(localPermissions);
-            });
-            final ok = await _saveUserProfile(includePermissions: true);
-            if (!mounted) return;
-            navigator.pop(ok);
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    );
-    if (saved == true) _toast('Permissions updated');
-  }
-
-  Future<void> _manageSessions() async {
-    final confirmed = await _showSideSheet<bool>(
-      title: 'Manage Sessions',
-      body: const Text(
-        'Without backend session management, this will sign out only the current device.',
-      ),
-      actions: [
-        OutlinedButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Sign Out This Device'),
-        ),
-      ],
-    );
-    if (confirmed != true) return;
-    final onLogout = widget.onLogout;
-    if (onLogout != null) {
-      onLogout();
-    } else {
-      await _auth.signOut();
-    }
-    if (mounted) {
-      _toast('Signed out on this device.');
-    }
-  }
-
-  Future<void> _toggleDeactivateAccount() async {
-    if (_deactivated) {
-      final ok = await _setCurrentUserActive(true);
-      if (ok) _toast('Account reactivated');
-      return;
-    }
-
-    final controller = TextEditingController();
-    final confirmed = await _showSideSheet<bool>(
-      title: 'Deactivate Account',
-      body: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Type DEACTIVATE to confirm.'),
-          const SizedBox(height: 8),
-          TextField(
-            controller: controller,
-            decoration: const InputDecoration(hintText: 'DEACTIVATE'),
-          ),
-        ],
-      ),
-      actions: [
-        OutlinedButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            Navigator.of(
-              context,
-            ).pop(controller.text.trim().toUpperCase() == 'DEACTIVATE');
-          },
-          child: const Text('Confirm'),
-        ),
-      ],
-    );
-
-    if (confirmed == true) {
-      final ok = await _setCurrentUserActive(false);
-      if (ok) {
-        _toast('Account deactivated');
-        final onLogout = widget.onLogout;
-        if (onLogout != null) {
-          onLogout();
-        } else {
-          await _auth.signOut();
-        }
-      }
-    } else if (confirmed == false) {
-      _toast('Deactivation cancelled');
-    }
-  }
-
-  Future<bool> _setCurrentUserActive(bool active) async {
-    final user = _auth.currentUser;
-    if (user == null) return false;
-    try {
-      await _firestore
-          .collection(FirestoreCollections.users)
-          .doc(user.uid)
-          .set({
-            'isActive': active,
-            if (active) 'approvalStatus': 'approved',
-            if (active) 'approvedAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-      if (mounted) {
-        setState(() => _deactivated = !active);
-      }
-      return true;
-    } catch (error) {
-      if (mounted) _toast('Failed to update account status: $error');
-      return false;
-    }
-  }
-
   Future<void> _configureWhatsAppNumber() async {
     final controller = TextEditingController(text: _whatsAppOrderNumber);
     final updated = await _showSideSheet<bool>(
@@ -1007,45 +604,6 @@ class _SettingsTabPageState extends State<SettingsTabPage> {
     if (updated == true) {
       _toast('WhatsApp number updated');
     }
-  }
-
-  Future<void> _updateCurrency(String value) async {
-    if (_currency == value) return;
-    final previous = _currency;
-    setState(() => _currency = value);
-    final saved = await _saveUserProfile();
-    if (!saved) {
-      if (!mounted) return;
-      setState(() => _currency = previous);
-      return;
-    }
-    if (mounted) _toast('Currency updated to $value.');
-  }
-
-  Future<void> _updateLanguage(String value) async {
-    if (_language == value) return;
-    final previous = _language;
-    setState(() => _language = value);
-    final saved = await _saveUserProfile();
-    if (!saved) {
-      if (!mounted) return;
-      setState(() => _language = previous);
-      return;
-    }
-    if (mounted) _toast('Language updated to $value.');
-  }
-
-  Future<void> _updateTimezone(String value) async {
-    if (_timezone == value) return;
-    final previous = _timezone;
-    setState(() => _timezone = value);
-    final saved = await _saveUserProfile();
-    if (!saved) {
-      if (!mounted) return;
-      setState(() => _timezone = previous);
-      return;
-    }
-    if (mounted) _toast('Timezone updated to $value.');
   }
 
   Future<bool> _saveUserProfile({bool includePermissions = false}) async {

@@ -34,12 +34,8 @@ void main() {
     });
 
     test('permission aliases normalize correctly', () {
-      final parsed = AccessControl.parsePermissions({
-        'staff': true,
-        'coreteam': true,
-      });
+      final parsed = AccessControl.parsePermissions({'staff': true});
       expect(parsed['staffs'], isTrue);
-      expect(parsed['coreTeam'], isTrue);
     });
   });
 }

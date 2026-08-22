@@ -561,71 +561,14 @@ class _OrdersTabPageState extends ConsumerState<OrdersTabPage> {
   }
 
   Widget _buildHeader(bool compact) {
-    if (compact) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Order List',
-            style: TextStyle(
-              fontSize: 30,
-              height: 1.1,
-              color: Color(0xFF111827),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Track fulfillment, payment, and delivery operations in real time.',
-            style: TextStyle(
-              color: Color(0xFF8A94A6),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 10),
-          _headerActionButton(
-            onTap: _creatingOrder ? () {} : _addOrder,
-            icon: Iconsax.add,
-            label: 'Add Order',
-            highlighted: true,
-          ),
-        ],
-      );
-    }
-
-    return Row(
-      children: [
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Order List',
-                style: TextStyle(
-                  fontSize: 30,
-                  height: 1.1,
-                  color: Color(0xFF111827),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Track fulfillment, payment, and delivery operations in real time.',
-                style: TextStyle(
-                  color: Color(0xFF8A94A6),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-        _headerActionButton(
-          onTap: _creatingOrder ? () {} : _addOrder,
-          icon: Iconsax.add,
-          label: 'Add Order',
-          highlighted: true,
-        ),
-      ],
+    return Align(
+      alignment: compact ? Alignment.centerLeft : Alignment.centerRight,
+      child: _headerActionButton(
+        onTap: _creatingOrder ? () {} : _addOrder,
+        icon: Iconsax.add,
+        label: 'Add Order',
+        highlighted: true,
+      ),
     );
   }
 

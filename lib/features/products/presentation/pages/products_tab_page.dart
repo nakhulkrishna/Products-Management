@@ -370,8 +370,12 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
         onBack: () {
           setState(() => _showCategoriesScreen = false);
         },
-        onCreateCategory: (name) async {
-          await _productsRepository.createCategory(name);
+        onCreateCategory: (name, {imageBytes, imageFileName}) async {
+          await _productsRepository.createCategory(
+            name,
+            imageBytes: imageBytes,
+            imageFileName: imageFileName,
+          );
         },
         onRenameCategory: ({required categoryId, required newName}) async {
           await _productsRepository.renameCategory(
@@ -379,6 +383,18 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
             newName: newName,
           );
         },
+        onSetCategoryImage:
+            ({
+              required categoryId,
+              required imageBytes,
+              required imageFileName,
+            }) async {
+              await _productsRepository.setCategoryImage(
+                categoryId: categoryId,
+                imageBytes: imageBytes,
+                imageFileName: imageFileName,
+              );
+            },
         onDeleteCategory: (categoryId) async {
           await _productsRepository.deleteCategory(categoryId);
         },
@@ -754,111 +770,36 @@ class _ProductsTabPageState extends ConsumerState<ProductsTabPage> {
   }
 
   Widget _buildHeader(bool compact) {
-    if (compact) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Align(
+      alignment: compact ? Alignment.centerLeft : Alignment.centerRight,
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
         children: [
-          const Text(
-            'Product List',
-            style: TextStyle(
-              fontSize: 30,
-              height: 1.1,
-              color: Color(0xFF111827),
-              fontWeight: FontWeight.w700,
-            ),
+          _headerActionButton(
+            onTap: () {
+              setState(() => _showCategoriesScreen = true);
+            },
+            icon: Iconsax.category,
+            label: 'Categories',
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Track stock levels, availability, and restocking needs in real time.',
-            style: TextStyle(
-              color: Color(0xFF8A94A6),
-              fontWeight: FontWeight.w500,
-            ),
+          _headerActionButton(
+            onTap: () {
+              unawaited(_openBulkUploadSideSheet());
+            },
+            icon: Iconsax.document_upload,
+            label: 'Bulk Upload',
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _headerActionButton(
-                onTap: () {
-                  setState(() => _showCategoriesScreen = true);
-                },
-                icon: Iconsax.category,
-                label: 'Categories',
-              ),
-              _headerActionButton(
-                onTap: () {
-                  unawaited(_openBulkUploadSideSheet());
-                },
-                icon: Iconsax.document_upload,
-                label: 'Bulk Upload',
-              ),
-              _headerActionButton(
-                onTap: () {
-                  setState(() => _showAddProductForm = true);
-                },
-                icon: Iconsax.add,
-                label: 'Add Product',
-                highlighted: true,
-              ),
-            ],
+          _headerActionButton(
+            onTap: () {
+              setState(() => _showAddProductForm = true);
+            },
+            icon: Iconsax.add,
+            label: 'Add Product',
+            highlighted: true,
           ),
         ],
-      );
-    }
-
-    return Row(
-      children: [
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Product List',
-                style: TextStyle(
-                  fontSize: 30,
-                  height: 1.1,
-                  color: Color(0xFF111827),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Track stock levels, availability, and restocking needs in real time.',
-                style: TextStyle(
-                  color: Color(0xFF8A94A6),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-        _headerActionButton(
-          onTap: () {
-            setState(() => _showCategoriesScreen = true);
-          },
-          icon: Iconsax.category,
-          label: 'Categories',
-        ),
-        const SizedBox(width: 8),
-        _headerActionButton(
-          onTap: () {
-            unawaited(_openBulkUploadSideSheet());
-          },
-          icon: Iconsax.document_upload,
-          label: 'Bulk Upload',
-        ),
-        const SizedBox(width: 8),
-        _headerActionButton(
-          onTap: () {
-            setState(() => _showAddProductForm = true);
-          },
-          icon: Iconsax.add,
-          label: 'Add Product',
-          highlighted: true,
-        ),
-      ],
+      ),
     );
   }
 

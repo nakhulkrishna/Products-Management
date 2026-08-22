@@ -15,7 +15,6 @@ class WebShellScaffold extends StatelessWidget {
   final VoidCallback onLogout;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenOrdersFromNotifications;
-  final VoidCallback onOpenCoreTeamFromNotifications;
   final ValueChanged<String> onSearchSubmitted;
   final String userName;
   final String userSubtitle;
@@ -29,7 +28,6 @@ class WebShellScaffold extends StatelessWidget {
     required this.onLogout,
     required this.onOpenSettings,
     required this.onOpenOrdersFromNotifications,
-    required this.onOpenCoreTeamFromNotifications,
     required this.onSearchSubmitted,
     required this.userName,
     required this.userSubtitle,
@@ -52,7 +50,6 @@ class WebShellScaffold extends StatelessWidget {
             onLogout: onLogout,
             onOpenSettings: onOpenSettings,
             onOpenOrdersFromNotifications: onOpenOrdersFromNotifications,
-            onOpenCoreTeamFromNotifications: onOpenCoreTeamFromNotifications,
             onSearchSubmitted: onSearchSubmitted,
             body: body,
           );
@@ -94,15 +91,10 @@ class WebShellScaffold extends StatelessWidget {
                           onOpenSettings: onOpenSettings,
                           onOpenOrdersFromNotifications:
                               onOpenOrdersFromNotifications,
-                          onOpenCoreTeamFromNotifications:
-                              onOpenCoreTeamFromNotifications,
                           onSearchSubmitted: onSearchSubmitted,
                           onLogout: onLogout,
                           userName: userName,
                           userSubtitle: userSubtitle,
-                          canSeeCoreTeamNotifications: visibleTabs.contains(
-                            SidebarTab.coreTeam,
-                          ),
                         ),
                         const Divider(height: 1, color: Color(0xFFE8EBF0)),
                         Expanded(
@@ -131,7 +123,6 @@ class _MobileShellScaffold extends StatelessWidget {
   final VoidCallback onLogout;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenOrdersFromNotifications;
-  final VoidCallback onOpenCoreTeamFromNotifications;
   final ValueChanged<String> onSearchSubmitted;
   final Widget body;
 
@@ -142,7 +133,6 @@ class _MobileShellScaffold extends StatelessWidget {
     required this.onLogout,
     required this.onOpenSettings,
     required this.onOpenOrdersFromNotifications,
-    required this.onOpenCoreTeamFromNotifications,
     required this.onSearchSubmitted,
     required this.body,
   });
@@ -459,12 +449,10 @@ class _TopAppBar extends StatefulWidget {
   final bool narrow;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenOrdersFromNotifications;
-  final VoidCallback onOpenCoreTeamFromNotifications;
   final ValueChanged<String> onSearchSubmitted;
   final VoidCallback onLogout;
   final String userName;
   final String userSubtitle;
-  final bool canSeeCoreTeamNotifications;
 
   const _TopAppBar({
     required this.title,
@@ -472,12 +460,10 @@ class _TopAppBar extends StatefulWidget {
     required this.narrow,
     required this.onOpenSettings,
     required this.onOpenOrdersFromNotifications,
-    required this.onOpenCoreTeamFromNotifications,
     required this.onSearchSubmitted,
     required this.onLogout,
     required this.userName,
     required this.userSubtitle,
-    required this.canSeeCoreTeamNotifications,
   });
 
   @override
@@ -493,24 +479,17 @@ class _TopAppBarState extends State<_TopAppBar> {
   final Map<String, String> _knownOrderStatusByDocId = <String, String>{};
   final Map<String, String> _knownPaymentStatusByDocId = <String, String>{};
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ordersSub;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _usersSub;
   bool _orderSnapshotSeeded = false;
-  bool _userSnapshotSeeded = false;
-  final Set<String> _pendingUserIds = <String>{};
 
   @override
   void initState() {
     super.initState();
     _listenForOrderNotifications();
-    if (widget.canSeeCoreTeamNotifications) {
-      _listenForPendingUserNotifications();
-    }
   }
 
   @override
   void dispose() {
     _ordersSub?.cancel();
-    _usersSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -1024,96 +1003,7 @@ class _TopAppBarState extends State<_TopAppBar> {
       case _ShellNotificationTarget.orders:
         widget.onOpenOrdersFromNotifications();
         break;
-      case _ShellNotificationTarget.coreTeam:
-        widget.onOpenCoreTeamFromNotifications();
-        break;
     }
-  }
-
-  void _listenForPendingUserNotifications() {
-    _usersSub = _firestore
-        .collection(FirestoreCollections.users)
-        .snapshots()
-        .listen(
-          (snapshot) {
-            final currentPendingIds = <String>{};
-            for (final doc in snapshot.docs) {
-              final data = doc.data();
-              if (_isPendingUser(data)) {
-                currentPendingIds.add(doc.id);
-              }
-            }
-
-            if (!_userSnapshotSeeded) {
-              _pendingUserIds
-                ..clear()
-                ..addAll(currentPendingIds);
-              if (currentPendingIds.isNotEmpty) {
-                _pushNotification(
-                  title: 'Pending registrations',
-                  message:
-                      '${currentPendingIds.length} user(s) are waiting for approval (including salesmen).',
-                  icon: Iconsax.user_tag,
-                  target: _ShellNotificationTarget.coreTeam,
-                );
-              }
-              _userSnapshotSeeded = true;
-              return;
-            }
-
-            for (final change in snapshot.docChanges) {
-              final data = change.doc.data();
-              if (data == null) continue;
-              final isPending = _isPendingUser(data);
-              final id = change.doc.id;
-              final wasPending = _pendingUserIds.contains(id);
-
-              if (isPending && !wasPending) {
-                final name = _stringOr(
-                  data['fullName'],
-                  fallback: _stringOr(data['email'], fallback: 'Unknown user'),
-                );
-                final requestedRole = _stringOr(
-                  data['requestedRole'],
-                  fallback: _stringOr(data['role'], fallback: 'Staff'),
-                );
-                _pushNotification(
-                  title: 'New pending registration',
-                  message: '$name requested $requestedRole access.',
-                  icon: Iconsax.profile_2user,
-                  target: _ShellNotificationTarget.coreTeam,
-                );
-                _pendingUserIds.add(id);
-              } else if (!isPending && wasPending) {
-                _pendingUserIds.remove(id);
-              }
-            }
-          },
-          onError: (_) {
-            _pushNotification(
-              title: 'Notification issue',
-              message:
-                  'Pending registration updates are temporarily unavailable.',
-              icon: Iconsax.warning_2,
-              target: _ShellNotificationTarget.coreTeam,
-            );
-          },
-        );
-  }
-
-  bool _isPendingUser(Map<String, dynamic> user) {
-    final approval = _stringOr(
-      user['approvalStatus'],
-      fallback: 'approved',
-    ).toLowerCase();
-    if (approval != 'pending') return false;
-    final requestedRole = _stringOr(
-      user['requestedRole'],
-      fallback: _stringOr(user['role'], fallback: ''),
-    ).toLowerCase();
-    return requestedRole.contains('staff') ||
-        requestedRole.contains('salesman') ||
-        requestedRole.contains('sales');
   }
 
   String _statusLabel(String raw) {
@@ -1293,4 +1183,4 @@ class _ShellNotificationItem {
   });
 }
 
-enum _ShellNotificationTarget { orders, coreTeam }
+enum _ShellNotificationTarget { orders }

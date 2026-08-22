@@ -4,9 +4,7 @@ import 'package:products_catelogs/core/constants/app_colors.dart';
 import 'package:products_catelogs/core/access/access_control.dart';
 import 'package:products_catelogs/core/access/user_role.dart';
 import 'package:products_catelogs/features/auth/application/auth_providers.dart';
-import 'package:products_catelogs/features/core_team/presentation/pages/core_team_tab_page.dart';
 import 'package:products_catelogs/features/customers/presentation/pages/customers_tab_page.dart';
-import 'package:products_catelogs/features/dashboard/presentation/pages/dashboard_tab_page.dart';
 import 'package:products_catelogs/features/orders/presentation/pages/orders_tab_page.dart';
 import 'package:products_catelogs/features/products/presentation/pages/products_tab_page.dart';
 import 'package:products_catelogs/features/settings/presentation/pages/settings_tab_page.dart';
@@ -92,7 +90,6 @@ class _WebShellPageState extends ConsumerState<WebShellPage> {
         onOpenSettings: _openSettings,
         onSearchSubmitted: _handleGlobalSearch,
         onOpenOrdersFromNotifications: _openOrdersFromNotifications,
-        onOpenCoreTeamFromNotifications: _openCoreTeamFromNotifications,
         userName: userName,
         userSubtitle: userSubtitle,
         body: IndexedStack(index: activeIndex, children: _tabs),
@@ -102,8 +99,6 @@ class _WebShellPageState extends ConsumerState<WebShellPage> {
 
   Widget _buildTab(int index) {
     switch (SidebarTab.values[index]) {
-      case SidebarTab.dashboard:
-        return const DashboardTabPage();
       case SidebarTab.products:
         return const ProductsTabPage();
       case SidebarTab.orders:
@@ -112,8 +107,6 @@ class _WebShellPageState extends ConsumerState<WebShellPage> {
         return const CustomersTabPage();
       case SidebarTab.staffs:
         return const StaffsTabPage();
-      case SidebarTab.coreTeam:
-        return const CoreTeamTabPage();
       case SidebarTab.settings:
         return SettingsTabPage(onLogout: _logout);
     }
@@ -148,20 +141,6 @@ class _WebShellPageState extends ConsumerState<WebShellPage> {
     ref.read(sidebarTabProvider.notifier).state = SidebarTab.orders;
   }
 
-  void _openCoreTeamFromNotifications() {
-    final role = ref.read(currentUserRoleProvider);
-    final profile = ref.read(userProfileProvider).value;
-    final allowedTabs = AccessControl.allowedTabs(
-      role: role,
-      permissionsRaw: profile?[AccessControl.permissionsField],
-    );
-    if (!allowedTabs.contains(SidebarTab.coreTeam)) {
-      _showAccessDenied(SidebarTab.coreTeam.label);
-      return;
-    }
-    ref.read(sidebarTabProvider.notifier).state = SidebarTab.coreTeam;
-  }
-
   void _handleGlobalSearch(String query) {
     final role = ref.read(currentUserRoleProvider);
     final profile = ref.read(userProfileProvider).value;
@@ -184,16 +163,9 @@ class _WebShellPageState extends ConsumerState<WebShellPage> {
     } else if (normalized.contains('staff') ||
         normalized.contains('salesman')) {
       target = SidebarTab.staffs;
-    } else if (normalized.contains('core') ||
-        normalized.contains('team') ||
-        normalized.contains('admin user')) {
-      target = SidebarTab.coreTeam;
     } else if (normalized.contains('setting') ||
         normalized.contains('profile')) {
       target = SidebarTab.settings;
-    } else if (normalized.contains('dashboard') ||
-        normalized.contains('sale')) {
-      target = SidebarTab.dashboard;
     }
 
     if (target != null) {

@@ -22,10 +22,19 @@ abstract class ProductsRepository {
   });
   Stream<List<ProductRecord>> watchProducts();
   Stream<List<ProductCategoryRecord>> watchCategories();
-  Future<void> createCategory(String name);
+  Future<void> createCategory(
+    String name, {
+    Uint8List? imageBytes,
+    String? imageFileName,
+  });
   Future<void> renameCategory({
     required String categoryId,
     required String newName,
+  });
+  Future<void> setCategoryImage({
+    required String categoryId,
+    required Uint8List imageBytes,
+    required String imageFileName,
   });
   Future<void> deleteCategory(String categoryId);
 }
@@ -218,7 +227,11 @@ class FirestoreProductsRepository implements ProductsRepository {
   }
 
   @override
-  Future<void> createCategory(String name) async {
+  Future<void> createCategory(
+    String name, {
+    Uint8List? imageBytes,
+    String? imageFileName,
+  }) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) throw StateError('Category name is required.');
     final key = _normalizeKey(trimmed);
@@ -232,6 +245,14 @@ class FirestoreProductsRepository implements ProductsRepository {
       throw StateError('Category already exists.');
     }
 
+    String? imageUrl;
+    if (imageBytes != null && imageBytes.isNotEmpty) {
+      imageUrl = await _uploadImageBytesToCloudinary(
+        bytes: imageBytes,
+        fileName: imageFileName ?? '$key.jpg',
+      );
+    }
+
     final user = _auth.currentUser;
     final now = FieldValue.serverTimestamp();
     await docRef.set({
@@ -239,6 +260,7 @@ class FirestoreProductsRepository implements ProductsRepository {
       'nameLower': trimmed.toLowerCase(),
       'key': key,
       'status': 'active',
+      'imageUrl': imageUrl,
       'audit': {
         'source': 'web_admin',
         'createdAt': now,
@@ -282,6 +304,7 @@ class FirestoreProductsRepository implements ProductsRepository {
         'nameLower': trimmed.toLowerCase(),
         'key': newId,
         'status': oldData['status'] ?? 'active',
+        'imageUrl': oldData['imageUrl'],
         'audit': {
           'source': oldAudit['source'] ?? 'web_admin',
           'createdAt': oldAudit['createdAt'] ?? now,
@@ -302,6 +325,35 @@ class FirestoreProductsRepository implements ProductsRepository {
         transaction.delete(oldDoc);
       }
     });
+  }
+
+  @override
+  Future<void> setCategoryImage({
+    required String categoryId,
+    required Uint8List imageBytes,
+    required String imageFileName,
+  }) async {
+    final id = categoryId.trim();
+    if (id.isEmpty) throw StateError('Invalid category id.');
+    final uploaded = await _uploadImageBytesToCloudinary(
+      bytes: imageBytes,
+      fileName: imageFileName,
+    );
+    if (uploaded == null || uploaded.isEmpty) {
+      throw StateError('Image upload failed.');
+    }
+    final user = _auth.currentUser;
+    await _firestore
+        .collection(FirestoreCollections.productCategories)
+        .doc(id)
+        .set({
+          'imageUrl': uploaded,
+          'audit': {
+            'updatedAt': FieldValue.serverTimestamp(),
+            'updatedByUid': user?.uid,
+            'updatedByEmail': user?.email,
+          },
+        }, SetOptions(merge: true));
   }
 
   @override
@@ -654,17 +706,24 @@ class ProductRecord {
 class ProductCategoryRecord {
   final String id;
   final String name;
+  final String? imageUrl;
 
-  const ProductCategoryRecord({required this.id, required this.name});
+  const ProductCategoryRecord({
+    required this.id,
+    required this.name,
+    this.imageUrl,
+  });
 
   factory ProductCategoryRecord.fromDoc(
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) {
     final data = doc.data() ?? <String, dynamic>{};
     final name = (data['name'] as String?)?.trim();
+    final imageUrl = (data['imageUrl'] as String?)?.trim();
     return ProductCategoryRecord(
       id: doc.id,
       name: (name == null || name.isEmpty) ? doc.id : name,
+      imageUrl: (imageUrl == null || imageUrl.isEmpty) ? null : imageUrl,
     );
   }
 }

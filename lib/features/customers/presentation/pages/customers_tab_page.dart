@@ -307,71 +307,14 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
   }
 
   Widget _buildHeader(bool compact) {
-    if (compact) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Customers',
-            style: TextStyle(
-              fontSize: 30,
-              height: 1.1,
-              color: Color(0xFF111827),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Manage customer directory from backend with full CRUD operations.',
-            style: TextStyle(
-              color: Color(0xFF8A94A6),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 10),
-          _headerActionButton(
-            onTap: _addCustomer,
-            icon: Iconsax.add,
-            label: 'Add Customer',
-            highlighted: true,
-          ),
-        ],
-      );
-    }
-
-    return Row(
-      children: [
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Customers',
-                style: TextStyle(
-                  fontSize: 30,
-                  height: 1.1,
-                  color: Color(0xFF111827),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Manage customer directory from backend with full CRUD operations.',
-                style: TextStyle(
-                  color: Color(0xFF8A94A6),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-        _headerActionButton(
-          onTap: _addCustomer,
-          icon: Iconsax.add,
-          label: 'Add Customer',
-          highlighted: true,
-        ),
-      ],
+    return Align(
+      alignment: compact ? Alignment.centerLeft : Alignment.centerRight,
+      child: _headerActionButton(
+        onTap: _addCustomer,
+        icon: Iconsax.add,
+        label: 'Add Customer',
+        highlighted: true,
+      ),
     );
   }
 
@@ -1205,18 +1148,10 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
 
   Future<_Customer?> _showCustomerEditor({_Customer? initial}) async {
     final isEditing = initial != null;
-    final idController = TextEditingController(text: initial?.id ?? '');
     final nameController = TextEditingController(text: initial?.name ?? '');
-    final phoneController = TextEditingController(text: initial?.phone ?? '');
-    final whatsappController = TextEditingController(
-      text: initial?.whatsapp ?? '',
-    );
-    final emailController = TextEditingController(text: initial?.email ?? '');
-    final regionController = TextEditingController(text: initial?.region ?? '');
     final addressController = TextEditingController(
       text: initial?.address ?? '',
     );
-    var status = initial?.status ?? _CustomerStatus.active;
 
     return showGeneralDialog<_Customer>(
       context: context,
@@ -1265,46 +1200,9 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
                             child: Column(
                               children: [
                                 TextField(
-                                  controller: idController,
-                                  enabled: !isEditing,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Customer ID',
-                                    hintText: 'CUST-1001',
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                TextField(
                                   controller: nameController,
                                   decoration: const InputDecoration(
                                     labelText: 'Name',
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                TextField(
-                                  controller: phoneController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Phone',
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                TextField(
-                                  controller: whatsappController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'WhatsApp',
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                TextField(
-                                  controller: emailController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Email',
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                TextField(
-                                  controller: regionController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Region',
                                   ),
                                 ),
                                 const SizedBox(height: 12),
@@ -1313,27 +1211,6 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
                                   maxLines: 2,
                                   decoration: const InputDecoration(
                                     labelText: 'Address',
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                DropdownButtonFormField<_CustomerStatus>(
-                                  initialValue: status,
-                                  onChanged: (value) {
-                                    if (value == null) return;
-                                    setSheetState(() => status = value);
-                                  },
-                                  items: const [
-                                    DropdownMenuItem(
-                                      value: _CustomerStatus.active,
-                                      child: Text('Active'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: _CustomerStatus.inactive,
-                                      child: Text('Inactive'),
-                                    ),
-                                  ],
-                                  decoration: const InputDecoration(
-                                    labelText: 'Status',
                                   ),
                                 ),
                               ],
@@ -1355,25 +1232,24 @@ class _CustomersTabPageState extends State<CustomersTabPage> {
                               Expanded(
                                 child: FilledButton(
                                   onPressed: () {
-                                    final id = idController.text.trim();
                                     final name = nameController.text.trim();
-                                    if (id.isEmpty || name.isEmpty) {
-                                      _toast(
-                                        'Customer ID and Name are required.',
-                                      );
+                                    if (name.isEmpty) {
+                                      _toast('Name is required.');
                                       return;
                                     }
+                                    final id = initial?.id ??
+                                        'CUST-${DateTime.now().millisecondsSinceEpoch}';
                                     Navigator.of(context).pop(
                                       _Customer(
                                         id: id,
                                         name: name,
-                                        phone: phoneController.text.trim(),
-                                        whatsapp: whatsappController.text
-                                            .trim(),
-                                        email: emailController.text.trim(),
-                                        region: regionController.text.trim(),
+                                        phone: initial?.phone ?? '',
+                                        whatsapp: initial?.whatsapp ?? '',
+                                        email: initial?.email ?? '',
+                                        region: initial?.region ?? '',
                                         address: addressController.text.trim(),
-                                        status: status,
+                                        status: initial?.status ??
+                                            _CustomerStatus.active,
                                       ),
                                     );
                                   },
