@@ -137,7 +137,7 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
 
   String? _selectedCategory;
   String? _baseUnit;
-  String _selectedMarket = _markets.first;
+  final String _selectedMarket = _markets.first;
   String? _stockUnit;
   bool _isSubmitting = false;
 
@@ -468,34 +468,10 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
               ),
               const SizedBox(height: 12),
               _sectionCard(
-                title: 'Market Pricing',
-                subtitle:
-                    'Set pricing per market for each unit.',
+                title: 'Pricing',
+                subtitle: 'Set the price for each unit.',
                 child: Column(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _dropdownField<String>(
-                            label: 'Market',
-                            value: _selectedMarket,
-                            hint: 'Select market',
-                            items: _markets,
-                            onChanged: (value) {
-                              if (value == null) return;
-                              setState(() => _selectedMarket = value);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        OutlinedButton.icon(
-                          onPressed: _copyHyperToLocal,
-                          icon: const Icon(Iconsax.copy, size: 16),
-                          label: const Text('Copy Hyper -> Local'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
                     if (_allUnits.isEmpty)
                       _readonlyHint(
                         'Select base unit and sale units to configure pricing.',
@@ -1147,22 +1123,6 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
     }
   }
 
-  void _copyHyperToLocal() {
-    _ensurePricingRows();
-    final hyper = _pricingByMarket[_markets.first]!;
-    final local = _pricingByMarket[_markets.last]!;
-    setState(() {
-      for (final unit in _allUnits) {
-        final source = hyper[unit]!;
-        local[unit] = source.copy();
-      }
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Copied Hyper Market prices to Local Market'),
-      ),
-    );
-  }
 
   double _conversionForUnit(String unit) {
     if (_baseUnit == null) return 1;
@@ -1225,7 +1185,22 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
     return input.replaceAll('#', '').trim().toLowerCase();
   }
 
+  void _mirrorPricesToAllMarkets() {
+    final source = _pricingByMarket[_selectedMarket]!;
+    for (final market in _markets) {
+      if (market == _selectedMarket) continue;
+      final target = _pricingByMarket[market]!;
+      target.clear();
+      for (final entry in source.entries) {
+        target[entry.key] = entry.value.copy();
+      }
+    }
+  }
+
   Future<void> _onSave() async {
+    // Single price set in the UI; stored identically for every market so
+    // the existing schema and the salesman app keep working unchanged.
+    _mirrorPricesToAllMarkets();
     if (_isSubmitting) return;
     _ensurePricingRows();
     final errors = <String>[];
