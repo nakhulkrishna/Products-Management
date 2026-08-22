@@ -1246,32 +1246,33 @@ class _AddEditProductFormViewState extends State<AddEditProductFormView> {
     }
 
     if (baseUnit != null) {
-      for (final market in _markets) {
-        final rows = _pricingByMarket[market]!;
-        var hasManualPrice = false;
-        var hasAutoRows = false;
-        for (final unit in _allUnits) {
-          final config = rows[unit];
-          if (config == null) continue;
-          if (!config.overrideEnabled) {
-            hasAutoRows = true;
-            continue;
-          }
-          final price = _positiveDouble(config.price);
-          if (price != null) {
-            hasManualPrice = true;
-          }
+      // Prices are mirrored to every market on save, so validating the
+      // edited set once is enough.
+      final rows = _pricingByMarket[_selectedMarket]!;
+      var hasManualPrice = false;
+      var hasAutoRows = false;
+      for (final unit in _allUnits) {
+        final config = rows[unit];
+        if (config == null) continue;
+        if (!config.overrideEnabled) {
+          hasAutoRows = true;
+          continue;
         }
-        if (!hasManualPrice) {
-          errors.add(
-            'At least one manual price is required in $market to calculate auto prices.',
-          );
+        final price = _positiveDouble(config.price);
+        if (price != null) {
+          hasManualPrice = true;
         }
-        if (hasAutoRows && _manualBaseForMarket(market).basePrice == null) {
-          errors.add(
-            'Auto price could not be calculated in $market. Add one valid manual price.',
-          );
-        }
+      }
+      if (!hasManualPrice) {
+        errors.add(
+          'At least one manual price is required to calculate auto prices.',
+        );
+      }
+      if (hasAutoRows &&
+          _manualBaseForMarket(_selectedMarket).basePrice == null) {
+        errors.add(
+          'Auto price could not be calculated. Add one valid manual price.',
+        );
       }
     }
 
